@@ -12,7 +12,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/beomjun/Documents/hotdeal-monitor/collector/run-pipeline.sh</string>
+		<string>/Users/beomjun/dev/hotdeal-monitor/collector/run-pipeline.sh</string>
 		<string>--pages</string>
 		<string>1</string>
 		<string>--max-details</string>
@@ -20,7 +20,7 @@
 	</array>
 
 	<key>WorkingDirectory</key>
-	<string>/Users/beomjun/Documents/hotdeal-monitor</string>
+	<string>/Users/beomjun/dev/hotdeal-monitor</string>
 
 	<!-- 2시간 = 7200초. macOS 수면 중 스케줄 시각이 지나면
 	     깨어났을 때 launchd가 밀린 1회를 실행한다. -->
@@ -41,9 +41,9 @@
 	</dict>
 
 	<key>StandardOutPath</key>
-	<string>/Users/beomjun/Documents/hotdeal-monitor/data/logs/launchd-stdout.log</string>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/launchd-stdout.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/beomjun/Documents/hotdeal-monitor/data/logs/launchd-stderr.log</string>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/launchd-stderr.log</string>
 
 	<!-- 백그라운드 저우선 순위 -->
 	<key>Nice</key>

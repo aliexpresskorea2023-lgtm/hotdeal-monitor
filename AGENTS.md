@@ -77,16 +77,28 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 
 실측(2026-08-26): run 45스냅샷 적재 시 posts 19개로 병합(중복 제거 확인), 재적재 시 관측 중복 없음. DB 스킵 스모크에서 ended/폼미입력 동결 + TTL 스킵 정상 동작 확인.
 
-### 주기 수집 스케줄링 (2026-08-26) — run-pipeline.sh + VPS
+### 주기 수집 스케줄링 (2026-08-26) — run-pipeline.sh + launchd(로컬 Mac)
 
 단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. collect(Python) → ingest(Node)를 순차 실행하되, collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
 
-스케줄링 위치 결정(2026-08-26): **로컬 Mac이 아닌 VPS에서 돌린다.**
-- 로컬 launchd 시도는 macOS TCC에 막힘 — `~/Documents`가 보호 폴더라 launchd 프로세스가 프로젝트에 접근 불가(`Operation not permitted`, exit 126). 권한(FDA) 부여나 폴더 이동으로 우회 가능하나 근본 제약.
-- 최저가 히스토리는 "시간이 쌓이는 관측 시계열"이라 24시간 켜진 서버가 적합. 크롤러는 Vercel 서버리스에 올리지 않는 기존 결정 유지.
-- 대상: Oracle Cloud Always Free(ARM Ampere, 무료) 권장. 배포 패키지는 `deploy/` — `setup-vps.sh`(프로비저닝), `hotdeal-pipeline.service`/`.timer`(매 짝수 시 정각, `Persistent=true`로 재부팅 후 밀린 1회 따라잡기), `README.md`.
-- 비공개 리포 접근은 GitHub deploy key(읽기 전용 SSH) 사용, 서버에 토큰을 남기지 않음.
-- 서버 시각이 UTC여도 무방 — 파이프라인 전체가 KST 명시 변환(`collect.py`의 `KST`, `src/db/index.ts`의 `nowKstIso`).
+스케줄링 위치 최종 결정(2026-08-26): **로컬 Mac + launchd, 2시간 주기.**
+
+결정 경위:
+1. 로컬 launchd 1차 시도 → macOS TCC 차단(`~/Documents` 보호, exit 126).
+2. VPS(Oracle Always Free)로 방향 전환 → 사용자 우려(과금 경험, 인계 복잡도)로 재검토.
+3. **Vercel 서버리스 실측(프로브 배포)** — 핵심 발견:
+   - curl_cffi(Chrome 지문)는 Vercel에서 정상 동작. Cloudflare 계열(quasarzone/arca)은 해외 DC IP에서도 지문으로 통과(200, 목록 파싱 성공).
+   - 그러나 **fmkorea는 430(자체 WAF "에펨코리아 보안 시스템") — TLS 지문 6종(chrome/safari/firefox/edge 등) 전부 차단 → IP 평판 기반, 지문으로 우회 불가.**
+   - **ruliweb은 TCP 커넥션 타임아웃 — 해외/DC IP 대역 차단.**
+   - 결론: Vercel로는 3/5 커뮤니티만 수집 가능(최대 출처 fmkorea 상실). Vercel은 파일시스템 휘발성이라 SQLite/스냅샷 구조 재설계도 필요.
+4. fmkorea·ruliweb 포함 전체 수집은 **한국 IP 필수** → 무료 한국 IP는 사용자 Mac(가정용 회선)이 유일하게 실측 통과. 프로젝트 경로를 `~/Documents` → `~/dev/hotdeal-monitor`로 이동해 TCC 회피, launchd 실측 통과(exit 0).
+
+launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `com.beomjun.hotdeal-monitor.pipeline`, StartInterval 7200초 = 2h, 수면 중 밀린 분은 기상 후 1회 따라잡기, `--pages 1 --max-details 40`). 설치는 `~/Library/LaunchAgents` 복사 + `launchctl bootstrap gui/$UID`. 로그는 `data/logs/launchd-{stdout,stderr}.log`.
+
+유의:
+- `~/dev`는 TCC 비보호 경로라 launchd 접근 가능. 프로젝트를 다시 보호 폴더로 옮기면 재발.
+- plist의 PATH에 nvm node 경로를 명시함 — node 버전 변경 시 plist도 수정 필요.
+- 장기 호스팅(인계 시점) 재논의 때 위 Vercel 실측 결과를 전제로: 5곳 전체는 한국 IP 호스트 필요. `deploy/`의 VPS 패키지(systemd timer)는 그 경우의 대안으로 보존.
 
 ## 향후 프론트엔드 설계 메모 (지금 구현하지 않음)
 
@@ -97,4 +109,4 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 - 디자인 확정 전까지는 Vercel 무료 플랜으로 빠르게 배포.
 - 이후 국내 서비스 무료 플랜 대안 검토(국내 IP가 크롤러/WAF에 유리).
 - 수집 데이터는 OSINT 정제물이라 외부 호스팅에 보안 리스크 없음.
-- 단, 수집 워커는 Vercel 서버리스에 올리지 않는다(해외 데이터센터 IP + 타임아웃).
+- 단, 수집 워커는 Vercel 서버리스에 올리지 않는다 — 실측(2026-08-26)으로 fmkorea 430(IP 평판 WAF)·ruliweb TCP 차단 확인. 3/5만 수집 가능해 최대 출처가 빠지므로 부적합(상세: "주기 수집 스케줄링" 섹션).
