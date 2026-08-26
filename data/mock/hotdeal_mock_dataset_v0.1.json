@@ -1,0 +1,763 @@
+{
+  "dataset_version": "0.1.0",
+  "generated_at": "2026-08-25T15:30:00+09:00",
+  "exchange_rates": {
+    "USD_KRW": {
+      "rate": 1385,
+      "as_of": "2026-08-25",
+      "source": "mock"
+    }
+  },
+  "deals": [
+    {
+      "deal_id": "deal_001",
+      "platform": "aliexpress",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984321",
+        "post_url": "https://example.com/ppomppu/984321",
+        "title": "[알리] 레노버 Y700 5세대 글로벌롬 $179.99 특가",
+        "raw_content": "신규회원 아니어도 쿠폰 먹이면 $179.99 나옵니다. 스토어 쿠폰 적용하고 카드할인까지 받으면 더 내려갑니다. 달러 결제 추천.",
+        "posted_at": "2026-08-25T12:41:00+09:00",
+        "views": 18420,
+        "comments": 137
+      },
+      "product": {
+        "product_id": "product_001",
+        "brand": "Lenovo",
+        "normalized_name": "Lenovo Legion Tab Y700 Gen 5",
+        "display_name": "레노버 Y700 5세대",
+        "model": "Y700 Gen 5",
+        "aliases": [
+          "레노버 Y700 5세대",
+          "레노버 Y705",
+          "Lenovo Y705",
+          "Legion Tab Y700 Gen 5"
+        ],
+        "category": "tablet",
+        "category_display": "태블릿"
+      },
+      "purchase": {
+        "platform": "aliexpress",
+        "product_url": "https://www.aliexpress.com/item/1005009876543210.html",
+        "item_id": "1005009876543210"
+      },
+      "price": {
+        "original_price": 249.99,
+        "deal_price": 179.99,
+        "currency": "USD",
+        "estimated_krw": 249285,
+        "price_basis": "original_currency",
+        "exchange_rate": 1385,
+        "price_condition": "coupon_applied"
+      },
+      "discount": {
+        "raw_text": "스토어 쿠폰 + 카드할인 적용 시 $179.99",
+        "coupon": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "USD",
+          "type": "platform_coupon"
+        },
+        "store_coupon": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "USD"
+        },
+        "card_discount": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "USD"
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 169.99,
+        "lowest_price_currency": "USD",
+        "lowest_price_krw_at_record": 235437,
+        "lowest_price_at": "2026-07-19T14:22:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 92,
+        "level": "hot"
+      }
+    },
+    {
+      "deal_id": "deal_002",
+      "platform": "aliexpress",
+      "source": {
+        "community": "fmkorea",
+        "post_id": "fmkorea_771122",
+        "post_url": "https://example.com/fmkorea/771122",
+        "title": "[알리] 레노버 Y705 239,000원대",
+        "raw_content": "Y705 23.9만 정도 나오네요. 원화로 결제하지 말고 달러로 결제하는게 나음. 카할 있으면 더 내려감.",
+        "posted_at": "2026-08-25T13:07:00+09:00",
+        "views": 9210,
+        "comments": 62
+      },
+      "product": {
+        "product_id": "product_001",
+        "brand": "Lenovo",
+        "normalized_name": "Lenovo Legion Tab Y700 Gen 5",
+        "display_name": "레노버 Y705",
+        "model": "Y700 Gen 5",
+        "aliases": [
+          "레노버 Y700 5세대",
+          "레노버 Y705",
+          "Lenovo Y705"
+        ],
+        "category": "tablet",
+        "category_display": "태블릿"
+      },
+      "purchase": {
+        "platform": "aliexpress",
+        "product_url": "https://www.aliexpress.com/item/1005009876543210.html",
+        "item_id": "1005009876543210"
+      },
+      "price": {
+        "original_price": null,
+        "deal_price": 239000,
+        "currency": "KRW",
+        "estimated_krw": 239000,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "conditional"
+      },
+      "discount": {
+        "raw_text": "23.9만 정도 / 카할 있으면 더 내려감",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "KRW"
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 169.99,
+        "lowest_price_currency": "USD",
+        "lowest_price_krw_at_record": 235437,
+        "lowest_price_at": "2026-07-19T14:22:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 76,
+        "level": "high"
+      }
+    },
+    {
+      "deal_id": "deal_003",
+      "platform": "coupang",
+      "source": {
+        "community": "fmkorea",
+        "post_id": "fmkorea_771130",
+        "post_url": "https://example.com/fmkorea/771130",
+        "title": "[쿠팡] 로지텍 MX Master 3S 89,900원",
+        "raw_content": "쿠팡 와우 기준 89,900원입니다. 카드할인까지 적용되는지는 카드마다 확인 필요.",
+        "posted_at": "2026-08-25T13:22:00+09:00",
+        "views": 15320,
+        "comments": 81
+      },
+      "product": {
+        "product_id": "product_002",
+        "brand": "Logitech",
+        "normalized_name": "Logitech MX Master 3S",
+        "display_name": "로지텍 MX Master 3S",
+        "model": "MX Master 3S",
+        "aliases": [
+          "MX Master 3S",
+          "MX마스터3S",
+          "로지텍 마스터3S"
+        ],
+        "category": "digital_accessories",
+        "category_display": "디지털 액세서리"
+      },
+      "purchase": {
+        "platform": "coupang",
+        "product_url": "https://www.coupang.com/vp/products/123456789",
+        "item_id": "123456789"
+      },
+      "price": {
+        "original_price": 129000,
+        "deal_price": 89900,
+        "currency": "KRW",
+        "estimated_krw": 89900,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "wow_member"
+      },
+      "discount": {
+        "raw_text": "쿠팡 와우 기준 89,900원 / 카드할인 여부 확인 필요",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "KRW"
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 84900,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 84900,
+        "lowest_price_at": "2026-08-03T11:04:00+09:00",
+        "lowest_price_source": "fmkorea",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 81,
+        "level": "hot"
+      }
+    },
+    {
+      "deal_id": "deal_004",
+      "platform": "coupang",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984351",
+        "post_url": "https://example.com/ppomppu/984351",
+        "title": "[쿠팡] 삼성전자 T7 1TB 79,900원",
+        "raw_content": "카드할인 적용하면 7만원대. 카드 종류마다 달라서 본인 카드 확인하세요.",
+        "posted_at": "2026-08-25T13:31:00+09:00",
+        "views": 11240,
+        "comments": 54
+      },
+      "product": {
+        "product_id": "product_003",
+        "brand": "Samsung",
+        "normalized_name": "Samsung Portable SSD T7 1TB",
+        "display_name": "삼성전자 T7 1TB",
+        "model": "MU-PC1T0",
+        "aliases": [
+          "삼성 T7 1TB",
+          "Samsung T7 1TB",
+          "T7 외장SSD 1TB"
+        ],
+        "category": "storage",
+        "category_display": "저장장치"
+      },
+      "purchase": {
+        "platform": "coupang",
+        "product_url": "https://www.coupang.com/vp/products/223456789",
+        "item_id": "223456789"
+      },
+      "price": {
+        "original_price": 109000,
+        "deal_price": 79900,
+        "currency": "KRW",
+        "estimated_krw": 79900,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "card_discount_possible"
+      },
+      "discount": {
+        "raw_text": "카드할인 적용하면 7만원대",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "KRW"
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 72900,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 72900,
+        "lowest_price_at": "2026-07-28T09:42:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 68,
+        "level": "high"
+      }
+    },
+    {
+      "deal_id": "deal_005",
+      "platform": "temu",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984377",
+        "post_url": "https://example.com/ppomppu/984377",
+        "title": "[테무] 휴대용 미니 프로젝터 29,900원",
+        "raw_content": "신규 쿠폰 적용하면 2만원 후반. 기존회원은 가격 다를 수 있음.",
+        "posted_at": "2026-08-25T13:44:00+09:00",
+        "views": 7420,
+        "comments": 31
+      },
+      "product": {
+        "product_id": "product_004",
+        "brand": null,
+        "normalized_name": "Portable Mini Projector 1080P",
+        "display_name": "휴대용 미니 프로젝터",
+        "model": null,
+        "aliases": [
+          "미니빔",
+          "미니 프로젝터",
+          "휴대용 빔프로젝터"
+        ],
+        "category": "digital",
+        "category_display": "디지털"
+      },
+      "purchase": {
+        "platform": "temu",
+        "product_url": "https://www.temu.com/product/987654321.html",
+        "item_id": "987654321"
+      },
+      "price": {
+        "original_price": 59900,
+        "deal_price": 29900,
+        "currency": "KRW",
+        "estimated_krw": 29900,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "new_user_coupon"
+      },
+      "discount": {
+        "raw_text": "신규 쿠폰 적용하면 2만원 후반",
+        "coupon": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "KRW",
+          "type": "new_user"
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "discount_code": null,
+        "new_user_only": true
+      },
+      "price_history": {
+        "lowest_price": 24900,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 24900,
+        "lowest_price_at": "2026-08-11T16:11:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 54,
+        "level": "normal"
+      }
+    },
+    {
+      "deal_id": "deal_006",
+      "platform": "temu",
+      "source": {
+        "community": "fmkorea",
+        "post_id": "fmkorea_771198",
+        "post_url": "https://example.com/fmkorea/771198",
+        "title": "[테무] USB-C 100W 충전기 12,900원",
+        "raw_content": "쿠폰 먹이면 1만원 초반대 나옵니다. 제품 링크는 댓글.",
+        "posted_at": "2026-08-25T14:02:00+09:00",
+        "views": 5110,
+        "comments": 19
+      },
+      "product": {
+        "product_id": "product_005",
+        "brand": null,
+        "normalized_name": "USB-C 100W GaN Charger",
+        "display_name": "USB-C 100W 충전기",
+        "model": null,
+        "aliases": [
+          "100W 충전기",
+          "GaN 100W 충전기",
+          "C타입 100W 충전기"
+        ],
+        "category": "digital_accessories",
+        "category_display": "디지털 액세서리"
+      },
+      "purchase": {
+        "platform": "temu",
+        "product_url": "https://www.temu.com/product/876543210.html",
+        "item_id": "876543210"
+      },
+      "price": {
+        "original_price": 29900,
+        "deal_price": 12900,
+        "currency": "KRW",
+        "estimated_krw": 12900,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "coupon_applied"
+      },
+      "discount": {
+        "raw_text": "쿠폰 먹이면 1만원 초반대",
+        "coupon": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "KRW",
+          "type": "platform_coupon"
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 10900,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 10900,
+        "lowest_price_at": "2026-08-01T10:13:00+09:00",
+        "lowest_price_source": "fmkorea",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 43,
+        "level": "normal"
+      }
+    },
+    {
+      "deal_id": "deal_007",
+      "platform": "daiso",
+      "source": {
+        "community": "fmkorea",
+        "post_id": "fmkorea_771241",
+        "post_url": "https://example.com/fmkorea/771241",
+        "title": "[다이소] 무선 충전 거치대 5,000원",
+        "raw_content": "다이소 신상. 5천원인데 생각보다 괜찮음. 지점마다 재고 다를 수 있습니다.",
+        "posted_at": "2026-08-25T14:16:00+09:00",
+        "views": 6300,
+        "comments": 28
+      },
+      "product": {
+        "product_id": "product_006",
+        "brand": "다이소",
+        "normalized_name": "Daiso Wireless Charging Stand",
+        "display_name": "다이소 무선 충전 거치대",
+        "model": null,
+        "aliases": [
+          "다이소 무선충전 거치대",
+          "다이소 충전 거치대",
+          "무선 충전 스탠드"
+        ],
+        "category": "living",
+        "category_display": "생활용품"
+      },
+      "purchase": {
+        "platform": "daiso",
+        "product_url": "https://www.daisomall.co.kr/product/123456",
+        "item_id": "123456"
+      },
+      "price": {
+        "original_price": 5000,
+        "deal_price": 5000,
+        "currency": "KRW",
+        "estimated_krw": 5000,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "normal"
+      },
+      "discount": {
+        "raw_text": "5천원",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 5000,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 5000,
+        "lowest_price_at": "2026-08-20T09:00:00+09:00",
+        "lowest_price_source": "fmkorea",
+        "current_vs_lowest": "same"
+      },
+      "hot_score": {
+        "score": 38,
+        "level": "normal"
+      }
+    },
+    {
+      "deal_id": "deal_008",
+      "platform": "daiso",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984402",
+        "post_url": "https://example.com/ppomppu/984402",
+        "title": "[다이소] 여행용 파우치 3,000원",
+        "raw_content": "이거 여행갈 때 쓰기 좋음. 품절된 매장 많다고 함.",
+        "posted_at": "2026-08-25T14:24:00+09:00",
+        "views": 4100,
+        "comments": 16
+      },
+      "product": {
+        "product_id": "product_007",
+        "brand": "다이소",
+        "normalized_name": "Daiso Travel Organizer Pouch",
+        "display_name": "다이소 여행용 파우치",
+        "model": null,
+        "aliases": [
+          "여행 파우치",
+          "여행용 수납 파우치",
+          "다이소 여행 파우치"
+        ],
+        "category": "living",
+        "category_display": "생활용품"
+      },
+      "purchase": {
+        "platform": "daiso",
+        "product_url": "https://www.daisomall.co.kr/product/234567",
+        "item_id": "234567"
+      },
+      "price": {
+        "original_price": 3000,
+        "deal_price": 3000,
+        "currency": "KRW",
+        "estimated_krw": 3000,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "normal"
+      },
+      "discount": {
+        "raw_text": "3,000원",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 3000,
+        "lowest_price_currency": "KRW",
+        "lowest_price_krw_at_record": 3000,
+        "lowest_price_at": "2026-08-12T12:10:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "same"
+      },
+      "hot_score": {
+        "score": 29,
+        "level": "normal"
+      }
+    },
+    {
+      "deal_id": "deal_009",
+      "platform": "aliexpress",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984419",
+        "post_url": "https://example.com/ppomppu/984419",
+        "title": "[알리] Baseus 65W GaN 충전기 $24.99",
+        "raw_content": "$24.99인데 코드 적용하면 19.99까지 내려갑니다. 스토어 쿠폰 있는 사람은 더 싸게 가능. 카할은 별도.",
+        "posted_at": "2026-08-25T14:38:00+09:00",
+        "views": 13670,
+        "comments": 74
+      },
+      "product": {
+        "product_id": "product_008",
+        "brand": "Baseus",
+        "normalized_name": "Baseus 65W GaN Charger",
+        "display_name": "Baseus 65W GaN 충전기",
+        "model": "65W",
+        "aliases": [
+          "Baseus 65W 충전기",
+          "베이스어스 65W",
+          "65W GaN 충전기"
+        ],
+        "category": "digital_accessories",
+        "category_display": "디지털 액세서리"
+      },
+      "purchase": {
+        "platform": "aliexpress",
+        "product_url": "https://www.aliexpress.com/item/1005001122334455.html",
+        "item_id": "1005001122334455"
+      },
+      "price": {
+        "original_price": 24.99,
+        "deal_price": 19.99,
+        "currency": "USD",
+        "estimated_krw": 27686,
+        "price_basis": "coupon_applied",
+        "exchange_rate": 1385,
+        "price_condition": "conditional"
+      },
+      "discount": {
+        "raw_text": "$24.99 → 코드 적용 $19.99 / 스토어 쿠폰 + 카할 별도",
+        "coupon": {
+          "mentioned": true,
+          "amount": 5,
+          "currency": "USD",
+          "type": "discount_code"
+        },
+        "store_coupon": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "USD"
+        },
+        "card_discount": {
+          "mentioned": true,
+          "amount": null,
+          "currency": "USD"
+        },
+        "discount_code": {
+          "mentioned": true,
+          "code": null
+        },
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": 17.49,
+        "lowest_price_currency": "USD",
+        "lowest_price_krw_at_record": 24224,
+        "lowest_price_at": "2026-08-09T18:44:00+09:00",
+        "lowest_price_source": "ppomppu",
+        "current_vs_lowest": "higher"
+      },
+      "hot_score": {
+        "score": 84,
+        "level": "hot"
+      }
+    },
+    {
+      "deal_id": "deal_010",
+      "platform": "coupang",
+      "source": {
+        "community": "ppomppu",
+        "post_id": "ppomppu_984431",
+        "post_url": "https://example.com/ppomppu/984431",
+        "title": "[쿠팡] 상품명 확인 필요 / 19,900원",
+        "raw_content": "상품명은 링크 들어가서 확인하세요. 제목에는 안 적혀 있고 본문도 이미지라 자동 파싱 안 될 수 있음. 19,900원.",
+        "posted_at": "2026-08-25T14:51:00+09:00",
+        "views": 2800,
+        "comments": 7
+      },
+      "product": {
+        "product_id": null,
+        "brand": null,
+        "normalized_name": null,
+        "display_name": "상품명 확인 필요",
+        "model": null,
+        "aliases": [],
+        "category": "uncategorized",
+        "category_display": "미분류"
+      },
+      "purchase": {
+        "platform": "coupang",
+        "product_url": "https://www.coupang.com/vp/products/334455667",
+        "item_id": "334455667"
+      },
+      "price": {
+        "original_price": null,
+        "deal_price": 19900,
+        "currency": "KRW",
+        "estimated_krw": 19900,
+        "price_basis": "original_currency",
+        "exchange_rate": null,
+        "price_condition": "unknown"
+      },
+      "discount": {
+        "raw_text": "19,900원",
+        "coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null,
+          "type": null
+        },
+        "store_coupon": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "card_discount": {
+          "mentioned": false,
+          "amount": null,
+          "currency": null
+        },
+        "discount_code": null,
+        "new_user_only": false
+      },
+      "price_history": {
+        "lowest_price": null,
+        "lowest_price_currency": null,
+        "lowest_price_krw_at_record": null,
+        "lowest_price_at": null,
+        "lowest_price_source": null,
+        "current_vs_lowest": "unknown"
+      },
+      "hot_score": {
+        "score": 17,
+        "level": "low"
+      }
+    }
+  ]
+}

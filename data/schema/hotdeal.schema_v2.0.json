@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HotDeal",
+  "type": "object",
+  "required": [
+    "id",
+    "source",
+    "sourcePostId",
+    "sourceUrl",
+    "title",
+    "products",
+    "status",
+    "stats",
+    "discount",
+    "sourceMeta",
+    "collectedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "sourcePostId": {
+      "type": "string"
+    },
+    "sourceUrl": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "category": {
+      "type": ["string", "null"]
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/product"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "ended",
+        "unknown"
+      ]
+    },
+    "stats": {
+      "$ref": "#/$defs/stats"
+    },
+    "discount": {
+      "$ref": "#/$defs/discount"
+    },
+    "sourceMeta": {
+      "$ref": "#/$defs/sourceMeta"
+    },
+    "collectedAt": {
+      "type": "string"
+    },
+    "postedAt": {
+      "type": ["string", "null"]
+    }
+  },
+  "$defs": {
+    "product": {
+      "type": "object",
+      "required": [
+        "name",
+        "price",
+        "currency",
+        "priceText",
+        "shipping",
+        "shippingText",
+        "store",
+        "url",
+        "urlType"
+      ],
+      "properties": {
+        "name": {
+          "type": ["string", "null"]
+        },
+        "price": {
+          "type": ["number", "null"]
+        },
+        "currency": {
+          "type": ["string", "null"]
+        },
+        "priceText": {
+          "type": ["string", "null"]
+        },
+        "shipping": {
+          "type": ["number", "null"]
+        },
+        "shippingText": {
+          "type": ["string", "null"]
+        },
+        "store": {
+          "type": ["string", "null"]
+        },
+        "url": {
+          "type": ["string", "null"]
+        },
+        "urlType": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "redirect",
+            "affiliate",
+            "javascript",
+            "app",
+            "none",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "properties": {
+        "views": {
+          "type": ["number", "null"]
+        },
+        "recommendations": {
+          "type": ["number", "null"]
+        },
+        "comments": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "discount": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceMeta": {
+      "type": "object",
+      "properties": {
+        "affiliate": {
+          "type": "boolean"
+        },
+        "rawUrl": {
+          "type": ["string", "null"]
+        },
+        "rawPrice": {
+          "type": ["string", "null"]
+        },
+        "rawShipping": {
+          "type": ["string", "null"]
+        },
+        "internalLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rawUrl": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

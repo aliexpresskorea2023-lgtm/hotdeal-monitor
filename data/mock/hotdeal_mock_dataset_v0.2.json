@@ -1,0 +1,144 @@
+[
+  {
+    "id": "fmkorea-10244835315",
+    "source": "fmkorea",
+    "sourcePostId": "10244835315",
+    "sourceUrl": "https://www.fmkorea.com/10244835315",
+    "title": "[알리] [이어폰] TINHIFI C1, LUN SHENG RING 외 ($12.27) (무료)",
+    "category": "이어폰",
+    "products": [
+      {
+        "name": "TINHIFI C1",
+        "price": 12.27,
+        "currency": "USD",
+        "priceText": "$12.27",
+        "shipping": 0,
+        "shippingText": "무료",
+        "store": "알리익스프레스",
+        "url": "https://ko.aliexpress.com/item/1005009015706669.html",
+        "urlType": "affiliate"
+      },
+      {
+        "name": "LUN SHENG RING",
+        "price": 13.68,
+        "currency": "USD",
+        "priceText": "$13.68",
+        "shipping": 0,
+        "shippingText": "무료",
+        "store": "알리익스프레스",
+        "url": "https://ko.aliexpress.com/item/1005012576446060.html",
+        "urlType": "affiliate"
+      },
+      {
+        "name": "TINHIFI HUO",
+        "price": 14,
+        "currency": "USD",
+        "priceText": "$14.00",
+        "shipping": 0,
+        "shippingText": "무료",
+        "store": "알리익스프레스",
+        "url": "https://ko.aliexpress.com/item/1005012834601642.html",
+        "urlType": "affiliate"
+      }
+    ],
+    "status": "active",
+    "stats": {
+      "views": 14803,
+      "recommendations": 7,
+      "comments": 18
+    },
+    "discount": {
+      "type": [],
+      "codes": [],
+      "description": "가격은 추가 카드 할인 적용 전 기준"
+    },
+    "sourceMeta": {
+      "affiliate": true,
+      "rawUrl": "https://link.fmkorea.org/link.php?url=https%3A%2F%2Fko.aliexpress.com%2Fitem%2F1005009015706669.html",
+      "rawPrice": "$12.27",
+      "rawShipping": "무료"
+    },
+    "collectedAt": "2026-08-25T00:00:00+09:00"
+  },
+  {
+    "id": "arca-180932406",
+    "source": "arca",
+    "sourcePostId": "180932406",
+    "sourceUrl": "https://arca.live/b/hotdeal/180932406",
+    "title": "잘풀리는집 키친타월 150매 12롤 * 2팩 (총 24롤) (11,970원/무료)",
+    "category": "생활용품",
+    "products": [
+      {
+        "name": "잘풀리는집 키친타월 150매 12롤 * 2팩 (총 24롤)",
+        "price": 11970,
+        "currency": "KRW",
+        "priceText": "11,970원",
+        "shipping": 0,
+        "shippingText": "무료",
+        "store": "오늘의집",
+        "url": "https://store.ohou.se/goods/3312834",
+        "urlType": "affiliate"
+      }
+    ],
+    "status": "active",
+    "stats": {
+      "views": null,
+      "recommendations": null,
+      "comments": 2
+    },
+    "discount": {
+      "type": [
+        "상품쿠폰",
+        "카카오페이"
+      ],
+      "codes": [],
+      "description": "상품쿠폰 적용 후 카카오페이 결제"
+    },
+    "sourceMeta": {
+      "affiliate": true,
+      "rawUrl": "https://unsafelink.com/https://store.ohou.se/goods/3312834",
+      "rawPrice": "11,970원",
+      "rawShipping": "무료"
+    },
+    "collectedAt": "2026-08-25T00:00:00+09:00"
+  },
+  {
+    "id": "quasarzone-example-001",
+    "source": "quasarzone",
+    "sourcePostId": "example-001",
+    "sourceUrl": "https://quasarzone.com/",
+    "title": "[네이버] 더 빅토리아 탄산수 플레인·레몬 500ml 20개",
+    "category": "식품",
+    "products": [
+      {
+        "name": "더 빅토리아 탄산수 플레인·레몬 500ml 20개",
+        "price": 6320,
+        "currency": "KRW",
+        "priceText": "￦ 6,320 (KRW)",
+        "shipping": 0,
+        "shippingText": "무료",
+        "store": "네이버",
+        "url": "https://brand.naver.com/woongjinfood/products/11746238181",
+        "urlType": "affiliate"
+      }
+    ],
+    "status": "active",
+    "stats": {
+      "views": null,
+      "recommendations": null,
+      "comments": 5
+    },
+    "discount": {
+      "type": [],
+      "codes": [],
+      "description": ""
+    },
+    "sourceMeta": {
+      "affiliate": true,
+      "rawUrl": "javascript:goToLink(...)",
+      "rawPrice": "￦ 6,320 (KRW)",
+      "rawShipping": "0"
+    },
+    "collectedAt": "2026-08-25T00:00:00+09:00"
+  }
+]

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.beomjun.hotdeal-monitor.pipeline</string>
+
+	<!-- run-pipeline.sh가 collect → ingest 순서로 실행.
+	     주기 수집은 목록 1페이지면 충분 (신규 글은 목록 상단에 등장,
+	     2시간 간격이면 순환 전에 포착). max-details는 넉넉히 두되
+	     DB 스킵(동결/TTL)이 예산을 소모하지 않아 실부하는 미미함. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/beomjun/Documents/hotdeal-monitor/collector/run-pipeline.sh</string>
+		<string>--pages</string>
+		<string>1</string>
+		<string>--max-details</string>
+		<string>40</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/beomjun/Documents/hotdeal-monitor</string>
+
+	<!-- 2시간 = 7200초. macOS 수면 중 스케줄 시각이 지나면
+	     깨어났을 때 launchd가 밀린 1회를 실행한다. -->
+	<key>StartInterval</key>
+	<integer>7200</integer>
+
+	<key>RunAtLoad</key>
+	<false/>
+
+	<!-- launchd 기본 PATH에는 nvm node가 없음.
+	     node 버전을 바꾸면 이 경로도 함께 수정해야 한다. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/Users/beomjun/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>HOME</key>
+		<string>/Users/beomjun</string>
+	</dict>
+
+	<key>StandardOutPath</key>
+	<string>/Users/beomjun/Documents/hotdeal-monitor/data/logs/launchd-stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/beomjun/Documents/hotdeal-monitor/data/logs/launchd-stderr.log</string>
+
+	<!-- 백그라운드 저우선 순위 -->
+	<key>Nice</key>
+	<integer>10</integer>
+</dict>
+</plist>

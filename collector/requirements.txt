@@ -1,0 +1,3 @@
+# hotdeal-monitor 수집 워커 의존성
+# 설치: python3 -m venv collector/.venv && collector/.venv/bin/pip install -r collector/requirements.txt
+curl_cffi>=0.16,<1.0
