@@ -1,0 +1,21 @@
+[Unit]
+Description=hotdeal-monitor collect + ingest pipeline
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@APP_USER@
+WorkingDirectory=@APP_DIR@
+# run-pipeline.sh가 collect(Python) → ingest(Node)를 순차 실행.
+# NodeSource node는 /usr/bin에 설치되지만, 안전하게 PATH를 명시한다.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=HOME=@APP_DIR@
+ExecStart=/bin/bash @APP_DIR@/collector/run-pipeline.sh --pages 1 --max-details 40
+# 딥 크롤이 길어질 수 있어 여유를 둔다
+TimeoutStartSec=30min
+# nice로 우선순위를 낮춰 서버가 바빠도 무리가 없게
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

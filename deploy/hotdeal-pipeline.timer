@@ -1,0 +1,14 @@
+[Unit]
+Description=Run hotdeal-monitor pipeline every 2 hours
+
+[Timer]
+# 매 짝수 시 정각(00:00, 02:00, ... 22:00) 실행.
+OnCalendar=*-*-* 00/2:00:00
+# 서버가 꺼져 있어서 놓친 실행은 부팅 후 한 번 따라잡는다.
+Persistent=true
+# 정확히 정각에 동시에 때리지 않도록 약간의 지터
+RandomizedDelaySec=120
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
