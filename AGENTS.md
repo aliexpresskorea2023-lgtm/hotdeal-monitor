@@ -77,6 +77,17 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 
 실측(2026-08-26): run 45스냅샷 적재 시 posts 19개로 병합(중복 제거 확인), 재적재 시 관측 중복 없음. DB 스킵 스모크에서 ended/폼미입력 동결 + TTL 스킵 정상 동작 확인.
 
+### 주기 수집 스케줄링 (2026-08-26) — run-pipeline.sh + VPS
+
+단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. collect(Python) → ingest(Node)를 순차 실행하되, collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
+
+스케줄링 위치 결정(2026-08-26): **로컬 Mac이 아닌 VPS에서 돌린다.**
+- 로컬 launchd 시도는 macOS TCC에 막힘 — `~/Documents`가 보호 폴더라 launchd 프로세스가 프로젝트에 접근 불가(`Operation not permitted`, exit 126). 권한(FDA) 부여나 폴더 이동으로 우회 가능하나 근본 제약.
+- 최저가 히스토리는 "시간이 쌓이는 관측 시계열"이라 24시간 켜진 서버가 적합. 크롤러는 Vercel 서버리스에 올리지 않는 기존 결정 유지.
+- 대상: Oracle Cloud Always Free(ARM Ampere, 무료) 권장. 배포 패키지는 `deploy/` — `setup-vps.sh`(프로비저닝), `hotdeal-pipeline.service`/`.timer`(매 짝수 시 정각, `Persistent=true`로 재부팅 후 밀린 1회 따라잡기), `README.md`.
+- 비공개 리포 접근은 GitHub deploy key(읽기 전용 SSH) 사용, 서버에 토큰을 남기지 않음.
+- 서버 시각이 UTC여도 무방 — 파이프라인 전체가 KST 명시 변환(`collect.py`의 `KST`, `src/db/index.ts`의 `nowKstIso`).
+
 ## 향후 프론트엔드 설계 메모 (지금 구현하지 않음)
 
 동일 아이템(상품명&옵션 동일 또는 상품 ID 동일)이 여러 커뮤니티에 동시 바이럴된 경우: 프론트에서는 아이템 카드 1개로 노출하고 커뮤니티 목록을 복수로 표시, 각 커뮤니티 탭에서도 동일 카드가 보이도록 한다. 즉 상품 정체성(productKey)은 커뮤니티 위에 있고, 커뮤니티는 카드의 속성 목록이 된다. 이 때문에 DB 설계 시 상품:게시글 = 1:N 관계(커뮤니티 교차)를 전제로 한다.
