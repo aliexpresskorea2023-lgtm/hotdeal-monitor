@@ -95,10 +95,15 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 
 launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `com.beomjun.hotdeal-monitor.pipeline`, StartInterval 7200초 = 2h, 수면 중 밀린 분은 기상 후 1회 따라잡기, `--pages 1 --max-details 40`). 설치는 `~/Library/LaunchAgents` 복사 + `launchctl bootstrap gui/$UID`. 로그는 `data/logs/launchd-{stdout,stderr}.log`.
 
+장기 호스팅 최종 결정(2026-08-26): **지금은 Mac 유지, 인계/상시 가동 시점에 한국 소형 VPS로 이사.** 오라클 재검토 시 조사 결론:
+- 오라클 Free Tier는 등록 카드 정보를 삭제할 수 없음(공식 문서 — PAYG 전환 시점에나 변경 가능, 계정 삭제 시에만 소멸). 개인 카드를 회사 프로젝트에 남기는 것은 부적합.
+- 홈리전은 영구 고정인데 한국(서울) 리전은 Always Free 용량이 사실상 없어 한국 선택이 불가 → 일본/싱가포르 선택 = 해외 IP = fmkorea/ruliweb 차단으로 Vercel과 동일하게 3/5.
+- 따라서 인계 시점에는 **회사 계정·회사 카드로 개설한 한국 IP VPS**(국내 클라우드 무료/소액 플랜)가 정답 — 퇴사 후 개인 부담 없음.
+
 유의:
 - `~/dev`는 TCC 비보호 경로라 launchd 접근 가능. 프로젝트를 다시 보호 폴더로 옮기면 재발.
 - plist의 PATH에 nvm node 경로를 명시함 — node 버전 변경 시 plist도 수정 필요.
-- 장기 호스팅(인계 시점) 재논의 때 위 Vercel 실측 결과를 전제로: 5곳 전체는 한국 IP 호스트 필요. `deploy/`의 VPS 패키지(systemd timer)는 그 경우의 대안으로 보존.
+- 이사 도구: `deploy/migrate-to-vps.sh` — Mac에서 대상 서버로 리포+DB+스냅샷을 rsync하고 `setup-vps.sh`를 실행하는 원커맨드 마이그레이션. `deploy/`의 VPS 패키지(systemd timer)와 함께 인계용으로 보존.
 
 ## 향후 프론트엔드 설계 메모 (지금 구현하지 않음)
 

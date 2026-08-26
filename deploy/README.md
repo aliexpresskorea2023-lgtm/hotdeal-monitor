@@ -3,25 +3,33 @@
 수집 워커(collect → ingest)를 2시간 주기로 돌릴 리눅스 서버 세팅 절차.
 프론트엔드(Vercel)와 분리 — 크롤러는 서버리스에 올리지 않는다(타임아웃, 해외 DC IP).
 
-## 권장 서버: Oracle Cloud Always Free
+## 권장 서버: 한국 IP VPS (회사 계정)
 
-비용 0원, 스펙 여유(ARM Ampere 최대 4 OCPU / 24GB), 영구 무료.
+5개 커뮤니티 전부 수집하려면 **한국 IP가 필수**다(fmkorea/ruliweb이 해외 IP 차단 —
+루트 AGENTS.md "Vercel 실측" 참고). 인계 시점 기준 절차:
 
-1. <https://signup.oraclecloud.com/> 가입. 신용카드 본인인증 필요(결제 없음).
-2. 인스턴스 생성: Compute → Instances → Create instance
-   - 이미지: **Ubuntu 22.04** (Canonical)
-   - 셰이프: **Ampere A1 Flex — 1 OCPU / 6GB RAM** (Always Free 범위 내)
-   - SSH 키: 아래 공개 키를 붙여넣기
-     ```
-     ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdn4d2kwwQCd47kKUeCjL+lqosmkONzHfVnAhaGvxDN hotdeal-monitor vps access
-     ```
-   - 네트워크: 기본 VCN 자동 생성 그대로
-3. 생성 후 퍼블릭 IP 확인 → IP를 공유하면 이후 세팅은 원격으로 진행.
+1. 국내 클라우드(또는 Vultr/Hetzner 서울 리전 등)에서 **회사 계정·회사 카드**로
+   Ubuntu 22.04/24.04 인스턴스 생성. 소규모(1 vCPU / 1~2GB)면 충분.
+2. 담당자 SSH 공개 키를 인스턴스에 등록.
+3. inbound는 SSH(22)만 열면 된다. 크롤은 전부 아웃바운드라 추가 포트 불필요.
 
- inbound는 SSH(22)만 열면 된다. 크롤은 전부 아웃바운드라 추가 포트 불필요.
- Oracle Ubuntu 이미지는 iptables가 SSH만 허용하도록 기본 설정되어 있어 그대로 두면 됨.
+> 오라클 Always Free는 배제 결정(2026-08-26): 등록 카드 삭제가 불가능하고,
+> 홈리전(영구 고정)인 서울 리전은 무료 용량이 사실상 없어 해외 리전을 선택하게
+> 되면 fmkorea/ruliweb 차단으로 3/5만 수집 가능. 개인 카드를 회사 프로젝트에
+> 남기지 않는 방향.
 
-대안(유료, 간단): Vultr/Hetzner/Lightsail Ubuntu 22.04 + 위 공개 키 등록. 절차 동일.
+## Mac → VPS 이사 (자동화: `deploy/migrate-to-vps.sh`)
+
+Mac에서 launchd로 돌리던 환경을 서버로 원커맨드 이전:
+
+```bash
+bash deploy/migrate-to-vps.sh <user@host>     # 옵션: APP_DIR SSH_PORT STOP_LOCAL=1
+```
+
+코드(.git 포함) + SQLite DB(가격 관측 시계열) + 크롤 스냅샷을 rsync로 옮긴 뒤
+원격에서 `setup-vps.sh`를 실행해 타이머까지 설치한다. 실행 중 파이프라인이 있으면
+완료 대기하고, 이사 중 새 수집이 끼어들면 data/를 재동기화한다.
+`STOP_LOCAL=1`을 주면 성공 시 Mac 쪽 launchd 에이전트도 정지(이중 수집 방지).
 
 ## 서버에서 하는 일 (자동화: `deploy/setup-vps.sh`)
 
@@ -53,10 +61,13 @@ sudo -u <user> bash -c 'cd /opt/hotdeal-monitor && pnpm install --frozen-lockfil
 sudo -u <user> /opt/hotdeal-monitor/collector/.venv/bin/pip install -r collector/requirements.txt
 ```
 
+deploy key가 없으면(비공개 리포) Mac에서 `bash deploy/migrate-to-vps.sh <user@host>`
+재실행으로 코드+데이터를 통째로 동기화해도 된다(멱등).
+
 ## 유의
 
-- `data/crawls/` 스냅샷은 계속 쌓인다(steady-state ~2MB/회). 디스크가
-  작으면 가지치기 정책 필요(백로그). Oracle Free는 블록 스토리지 100GB라 여유.
+- `data/crawls/` 스냅샷은 계속 쌓인다(steady-state ~2MB/회). 소형 인스턴스
+  디스크가 작으면 가지치기 정책 필요(백로그). 20GB 이상이면 당분간 여유.
 - 서버 시각이 UTC여도 무방 — 파이프라인은 전부 KST 명시 변환.
 - 서버 IP가 바뀌거나 WAF 양상이 바뀌면 `data/logs/pipeline.log`의
   challenge/blocked 통계부터 확인할 것.

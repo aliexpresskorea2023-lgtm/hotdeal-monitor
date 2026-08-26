@@ -14,10 +14,12 @@
 #   sudo bash deploy/setup-vps.sh
 #
 # 환경변수 옵션:
-#   APP_DIR   설치 경로 (기본 /opt/hotdeal-monitor)
-#   APP_USER  서비스 실행 사용자 (기본: sudo 호출자)
-#   REPO_URL  clone 주소 (비공개 리포면 SSH deploy key 설정 후
-#             git@github.com:... 형태로 지정)
+#   APP_DIR        설치 경로 (기본 /opt/hotdeal-monitor)
+#   APP_USER       서비스 실행 사용자 (기본: sudo 호출자)
+#   REPO_URL       clone 주소 (비공개 리포면 SSH deploy key 설정 후
+#                  git@github.com:... 형태로 지정)
+#   SKIP_GIT_PULL  1이면 clone/pull 생략 (migrate-to-vps.sh가 rsync로
+#                  코드를 이전한 경우용)
 
 set -euo pipefail
 
@@ -57,7 +59,10 @@ fi
 echo "pnpm $(pnpm --version)"
 
 echo "==> [4/7] 코드 clone/pull → $APP_DIR"
-if [[ -d "$APP_DIR/.git" ]]; then
+if [[ "${SKIP_GIT_PULL:-0}" == "1" ]]; then
+  # migrate-to-vps.sh가 rsync로 코드를 이미 이전한 경우 — 원격 저장소 접근 불필요
+  echo "    SKIP_GIT_PULL=1 — rsync 이전분 사용, git pull 생략"
+elif [[ -d "$APP_DIR/.git" ]]; then
   sudo -u "$APP_USER" git -C "$APP_DIR" pull --ff-only
 else
   sudo -u "$APP_USER" git clone "$REPO_URL" "$APP_DIR"
