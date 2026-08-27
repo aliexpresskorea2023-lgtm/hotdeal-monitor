@@ -79,7 +79,7 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 
 ### 주기 수집 스케줄링 (2026-08-26) — run-pipeline.sh + launchd(로컬 Mac)
 
-단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. collect(Python) → ingest(Node)를 순차 실행하되, collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
+단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. 4단계 순차: ① collect(Python) ② ingest(Node) ③ 썸네일 수집(`fetch-thumbnails.ts --limit 40`, 베스트 에포트) ④ 배포(아래 "배포 파이프라인" 참고). collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
 
 스케줄링 위치 최종 결정(2026-08-26): **로컬 Mac + launchd, 2시간 주기.**
 
@@ -204,6 +204,14 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 - 이후 국내 서비스 무료 플랜 대안 검토(국내 IP가 크롤러/WAF에 유리).
 - 수집 데이터는 OSINT 정제물이라 외부 호스팅에 보안 리스크 없음.
 - 단, 수집 워커는 Vercel 서버리스에 올리지 않는다 — 실측(2026-08-26)으로 fmkorea 430(IP 평판 WAF)·ruliweb TCP 차단 확인. 3/5만 수집 가능해 최대 출처가 빠지므로 부적합(상세: "주기 수집 스케줄링" 섹션).
+
+### 배포 파이프라인 (2026-08-27) — 수집 주기 = 배포 주기
+
+`run-pipeline.sh` 4단계가 자동 배포로 이어진다: ingest 성공 시 ① `scripts/freeze-db.ts`로 DB 스냅샷 고정 ② `data/hotdeal.db` 커밋·푸시(리포=백업) ③ `vercel deploy --prod --yes`. 배포 실패는 수집 실패와 분리해 로그·종료코드 전파.
+
+**절대 규칙 — 배포 전 `freeze-db.ts`(WAL → 롤백 저널)를 반드시 거쳐야 한다.** 실측 장애(2026-08-27): WAL 모드 DB를 읽기 전용으로 열려면 `-shm` 보조 파일이 필요한데, 보조 파일 없이 `hotdeal.db`만 배포되자 읽기 전용 파일시스템인 Vercel serverless에서 `unable to open database file`(CANTOPEN)로 전 페이지가 죽었다. 보조 파일이 함께 업로드된 과거 배포는 우연히 동작했던 것. 롤백 저널(`PRAGMA journal_mode=DELETE`) DB는 단일 파일로 읽기 전용 열람이 가능하다. 로컬 운영은 영향 없음 — `openDb()`가 수집 시 다시 WAL로 전환한다. 수동 배포 시에도 `npx tsx scripts/freeze-db.ts`를 먼저 실행할 것.
+
+기타 배포 고정값: `vercel.json` 미사용(`nodeVersion` 필드는 미지원이라 에러 유발 — 폐기함), 노드는 `package.json "engines":{"node":"22.x"}`로 고정. DB는 `.gitignore` 제외(커밋 대상) + `next.config.ts outputFileTracingIncludes`로 serverless 번들 포함. `vercel deploy` 업로드는 `.gitignore`를 무시하므로 대용량 디렉터리도 같이 올라간다(불필요 분은 `.vercelignore`로만 제외 가능).
 
 ### v1.1 데이터 품질 수정 + 리브랜드 (2026-08-27)
 
