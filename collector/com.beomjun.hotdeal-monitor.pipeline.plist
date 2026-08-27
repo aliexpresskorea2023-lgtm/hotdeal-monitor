@@ -22,10 +22,24 @@
 	<key>WorkingDirectory</key>
 	<string>/Users/beomjun/dev/hotdeal-monitor</string>
 
-	<!-- 2시간 = 7200초. macOS 수면 중 스케줄 시각이 지나면
-	     깨어났을 때 launchd가 밀린 1회를 실행한다. -->
-	<key>StartInterval</key>
-	<integer>7200</integer>
+	<!-- 주간만 수집: 08:00~22:00, 2시간 간격 (하루 8회).
+	     새벽(00~07시) 수집은 실측상 실익이 없어 제외했다 —
+	     심야에는 집 회선에서도 일부 사이트가 차단을 걸어
+	     수집량이 0에 수렴하고(2026-08-27 로그: 05시 1건),
+	     2시간 주기 깨움으로 맥 배터리가 밤새 소모됐다.
+	     야간 글은 08시 실행에서 회수된다.
+	     수면 중 스케줄 시각이 지나면 깨어났을 때 밀린 1회만 실행. -->
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
+	</array>
 
 	<key>RunAtLoad</key>
 	<false/>

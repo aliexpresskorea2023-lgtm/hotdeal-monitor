@@ -93,7 +93,9 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
    - 결론: Vercel로는 3/5 커뮤니티만 수집 가능(최대 출처 fmkorea 상실). Vercel은 파일시스템 휘발성이라 SQLite/스냅샷 구조 재설계도 필요.
 4. fmkorea·ruliweb 포함 전체 수집은 **한국 IP 필수** → 무료 한국 IP는 사용자 Mac(가정용 회선)이 유일하게 실측 통과. 프로젝트 경로를 `~/Documents` → `~/dev/hotdeal-monitor`로 이동해 TCC 회피, launchd 실측 통과(exit 0).
 
-launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `com.beomjun.hotdeal-monitor.pipeline`, StartInterval 7200초 = 2h, 수면 중 밀린 분은 기상 후 1회 따라잡기, `--pages 1 --max-details 40`). 설치는 `~/Library/LaunchAgents` 복사 + `launchctl bootstrap gui/$UID`. 로그는 `data/logs/launchd-{stdout,stderr}.log`.
+launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `com.beomjun.hotdeal-monitor.pipeline`, **StartCalendarInterval 08~22시 매 2시간 = 하루 8회**, 수면 중 밀린 분은 기상 후 1회 따라잡기, `--pages 1 --max-details 40`). 설치는 `~/Library/LaunchAgents` 복사 + `launchctl bootstrap gui/$UID`. 로그는 `data/logs/launchd-{stdout,stderr}.log`.
+
+스케줄 변경(2026-08-27): 초기엔 StartInterval 7200(24h 무중단)이었으나 주간 전용으로 축소. 근거: ① 심야(00~07시) 실행은 집 회선에서도 일부 사이트가 차단을 걸어 수집량이 0에 수렴(실측: 05시 실행 스냅샷 1건) ② 2시간 주기 launchd 깨움이 맥을 밤새 깨워 배터리를 바닥냄. 야간 글은 08시 실행에서 회수되므로 데이터 손실 미미. 같은 시점 재검토한 클라우드 대안들 — "Vercel + 무료 한국 프록시", "GitHub Actions + 안드로이드 공단말기 프록시" — 은 기각: 무료 한국 주거용 프록시는 존재하지 않고(레지덴셜 프록시는 유료 산업), 공개 프록시는 DC IP라 fmkorea IP 평판·ruliweb TCP 차단을 통과 불가. 공단말기 방식은 추가 단말+포트포워딩(국내 가정 회선 CGNAT 많음)+집 회선 노출 보안 위험.
 
 장기 호스팅 최종 결정(2026-08-26): **지금은 Mac 유지, 인계/상시 가동 시점에 한국 소형 VPS로 이사.** 오라클 재검토 시 조사 결론:
 - 오라클 Free Tier는 등록 카드 정보를 삭제할 수 없음(공식 문서 — PAYG 전환 시점에나 변경 가능, 계정 삭제 시에만 소멸). 개인 카드를 회사 프로젝트에 남기는 것은 부적합.
