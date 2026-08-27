@@ -36,6 +36,21 @@ export function openDb(dbPath: string = DEFAULT_DB_PATH): DatabaseSync {
   return db;
 }
 
+/**
+ * 읽기 전용 연결 (웹 조회용).
+ *
+ * 스키마 적용/PRAGMA 설정 없이 열고, 파일이 없으면 null을 돌려준다
+ * (수집 이력이 아직 없는 환경에서 페이지가 죽지 않도록).
+ * 수집 파이프라인과 동시 접근은 WAL 모드라 안전하다.
+ */
+export function openDbReadOnly(
+  dbPath: string = DEFAULT_DB_PATH,
+): DatabaseSync | null {
+  if (!fs.existsSync(dbPath)) return null;
+
+  return new DatabaseSync(dbPath, { readOnly: true });
+}
+
 /** ISO 8601 (+09:00) 현재 시각 문자열. */
 export function nowKstIso(): string {
   const now = new Date();

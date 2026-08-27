@@ -105,7 +105,13 @@ launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `co
 - plist의 PATH에 nvm node 경로를 명시함 — node 버전 변경 시 plist도 수정 필요.
 - 이사 도구: `deploy/migrate-to-vps.sh` — Mac에서 대상 서버로 리포+DB+스냅샷을 rsync하고 `setup-vps.sh`를 실행하는 원커맨드 마이그레이션. `deploy/`의 VPS 패키지(systemd timer)와 함께 인계용으로 보존.
 
-## 향후 프론트엔드 설계 메모 (지금 구현하지 않음)
+### 프론트엔드 실데이터 연결 (2026-08-27) — mock 졸업
+
+`app/page.tsx`가 더 이상 `data/mock/…v0.2.json`을 import하지 않는다. 데이터 흐름: `src/db/queries.ts`의 `getDealFeed()`가 `openDbReadOnly()`(읽기 전용, 파일 없으면 빈 피드)로 posts+deals를 조회해 뷰 타입(`PostView`/`ProductView`)으로 조립 → 페이지는 뷰만 렌더. 표시 형태와 저장 스키마를 분리했으니 디자인 변경은 페이지 마크업만, 노출 기준 변경은 queries.ts만 고치면 된다. `dynamic = "force-dynamic"`이라 매 요청 DB 재읽음 — 수집 결과가 재시작 없이 반영된다.
+
+노출 규칙(현 단계): 상품 1개 이상 파싱된 게시글만, 종료 딜 포함, 진행중·상태 모름 → 종료 순, 마지막 적재 시각 내림차순, 게시글 500개 상한. 툴바 필터/정렬은 아직 미연결(표시만). 실측 검증: 카드 444개 = DB deals 444건, 원문 372건·진행중 147건이 DB 집계와 일치. 참고: 구매 링크 없는 카드가 상당수(현 데이터 114건) — 파서 url_type 분포 확인 포인트.
+
+## 향후 프론트엔드 설계 메모 (아직 구현하지 않은 부분)
 
 동일 아이템(상품명&옵션 동일 또는 상품 ID 동일)이 여러 커뮤니티에 동시 바이럴된 경우: 프론트에서는 아이템 카드 1개로 노출하고 커뮤니티 목록을 복수로 표시, 각 커뮤니티 탭에서도 동일 카드가 보이도록 한다. 즉 상품 정체성(productKey)은 커뮤니티 위에 있고, 커뮤니티는 카드의 속성 목록이 된다. 이 때문에 DB 설계 시 상품:게시글 = 1:N 관계(커뮤니티 교차)를 전제로 한다.
 
