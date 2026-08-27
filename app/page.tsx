@@ -1,20 +1,34 @@
 import { getDealFeed, type ItemView } from "@/src/db/queries";
+import { CATEGORIES, type NormCategory } from "@/src/db/taxonomy";
 
 /*
  * 데이터 소스: data/hotdeal.db (수집 파이프라인 적재분).
  * 매 요청마다 DB에서 새로 읽는다 — 2시간 주기 수집 결과가
  * 빌드/재시작 없이 바로 반영되도록 정적 생성은 끄고 간다.
  *
- * 표시 단위: 아이템 카드.
- * 같은 구매 URL의 딜은 커뮤니티와 무관하게 카드 1개로 병합되고,
- * 카드 안에 출처 게시글 목록이 붙는다. (병합 로직은
- * src/db/queries.ts — 디자인 변경 시 이 파일 마크업만 고치면 된다.)
+ * 표시 단위: 아이템 카드(리스트 로우).
+ * 같은 구매 URL의 딜은 커뮤니티 무관 1로우로 병합되고,
+ * 로우 안에 출처 커뮤니티 링크가 붙는다.
+ *
+ * 필터/정렬은 URL 쿼리스트링 기반(서버 컴포넌트, 클라이언트 JS 없음):
+ *   ?cat=생활/식품&store=쿠팡&status=active&sort=hot
+ * 디자인은 라이트 모드 기준 — 다크 모드 토글은 추후 과제.
  */
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "HOTDEAL MONITOR",
 };
+
+type PageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function first(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function formatNumber(value: number | null) {
   if (value === null) return "-";
@@ -32,6 +46,19 @@ function formatTime(dateString: string) {
   });
 }
 
+function timeAgo(dateString: string) {
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+
+  return `${Math.floor(hours / 24)}일 전`;
+}
+
 function sourceLabel(source: string) {
   const labels: Record<string, string> = {
     fmkorea: "펨코",
@@ -47,14 +74,10 @@ function sourceLabel(source: string) {
   return labels[source] ?? source;
 }
 
+/** 임시 정책: 상태 모름은 진행중으로 노출. 종료 확인 건만 종료. */
 function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    active: "진행중",
-    ended: "종료",
-    unknown: "상태 확인 필요",
-  };
-
-  return labels[status] ?? status;
+  if (status === "ended") return "종료";
+  return "진행중";
 }
 
 function formatPrice(
@@ -71,128 +94,142 @@ function formatPrice(
   return priceText;
 }
 
-function ItemCard({ item }: { item: ItemView }) {
+function recSum(item: ItemView): number {
+  return item.sources.reduce(
+    (sum, s) => sum + (s.stats.recommendations ?? 0),
+    0,
+  );
+}
+
+function hrefFor(
+  current: Record<string, string>,
+  patch: Record<string, string | null>,
+) {
+  const next = new URLSearchParams();
+
+  for (const [key, value] of Object.entries({ ...current, ...patch })) {
+    if (value) next.set(key, value);
+  }
+
+  const qs = next.toString();
+
+  return qs ? `/?${qs}` : "/";
+}
+
+function DealRow({ item }: { item: ItemView }) {
+  const recommendations = recSum(item);
+
   return (
-    <article className="deal-card" data-item-key={item.key}>
-      {/* 상단 정보 */}
-      <div className="deal-top">
-        <div className="platform-badge">{item.store ?? "스토어 미상"}</div>
+    <article className="deal-row">
+      <div className="row-line1">
+        <span
+          className={
+            item.status === "ended" ? "row-status ended" : "row-status"
+          }
+        >
+          {statusLabel(item.status)}
+        </span>
 
-        <div className="deal-top-right">
-          {item.merged && (
-            <span className="merged-badge">
-              커뮤니티 {item.sources.length}곳
-            </span>
-          )}
+        <a
+          className="row-title"
+          href={item.url ?? item.sources[0].sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {item.name ?? item.sources[0].title}
+        </a>
 
-          <div className="hot-badge">{statusLabel(item.status)}</div>
-        </div>
+        <span className="row-cat">{item.categoryNorm}</span>
       </div>
 
-      {/* 상품 정보 */}
-      <div className="deal-content">
-        <div className="deal-title-row">
-          <h2>{item.name ?? "상품명 확인 필요"}</h2>
+      <div className="row-line2">
+        <span className="row-store">{item.storeNorm}</span>
 
-          {item.category && (
-            <span className="normalized-name">{item.category}</span>
-          )}
-        </div>
+        <span className="row-price">
+          {formatPrice(item.price, item.currency, item.priceText)}
+        </span>
 
-        <div className="price-area">
-          <div className="main-price">
-            {formatPrice(item.price, item.currency, item.priceText)}
-          </div>
-
-          {item.merged && item.price !== null && (
-            <div className="estimated-price">
-              커뮤니티 {item.sources.length}곳 중 최저가
-            </div>
-          )}
-        </div>
-
-        {/* 배송비 */}
-        <div className="condition-badge">
+        <span className="row-ship">
           {item.shippingText ?? "배송비 확인 필요"}
-        </div>
+        </span>
 
-        {/* 할인 정보 */}
-        {item.discount.description && (
-          <div className="discount-info">
-            <span>할인 정보</span>
-            <p>{item.discount.description}</p>
-          </div>
+        {recommendations > 0 && (
+          <span className="row-rec">★ {formatNumber(recommendations)}</span>
         )}
 
-        {/* 출처 게시글 목록 — 각 행은 원문 링크 */}
-        <div className="source-list">
+        <span className="row-time">
+          {timeAgo(item.postedAt ?? item.collectedAt)}
+        </span>
+
+        <span className="row-sources">
           {item.sources.map((source) => (
             <a
               key={source.id}
-              className="source-row"
               href={source.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
+              title={source.title}
             >
-              <span className="source-platform">
-                {sourceLabel(source.source)}
-              </span>
-
-              <span className="source-title">{source.title}</span>
-
-              <span className="source-meta">
-                {source.price !== null &&
-                  formatPrice(
-                    source.price,
-                    source.currency,
-                    source.priceText,
-                  )}
-
-                {source.stats.views !== null && (
-                  <> · 조회 {formatNumber(source.stats.views)}</>
-                )}
-
-                {" · "}
-                {formatTime(source.collectedAt)}
-              </span>
+              {sourceLabel(source.source)}
             </a>
           ))}
-        </div>
+        </span>
       </div>
-
-      {/* 버튼 */}
-      <div className="deal-actions">
-        {item.url ? (
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="primary-button"
-          >
-            구매 링크 ↗
-          </a>
-        ) : (
-          <span className="secondary-button">구매 링크 없음</span>
-        )}
-      </div>
-
-      {/* ID */}
-      <div className="item-id">key: {item.key}</div>
     </article>
   );
 }
 
-export default function Home() {
-  const { items, hasData, lastIngestedAt } = getDealFeed();
+export default async function Home({ searchParams }: PageProps) {
+  const raw = await searchParams;
+
+  const rawCat = first(raw.cat);
+  const rawStore = first(raw.store);
+  const rawStatus = first(raw.status);
+  const rawSort = first(raw.sort);
+
+  /* facets(스토어 칩 목록)용 전체 피드와 필터 적용 피드를 분리 조회. */
+  const all = getDealFeed();
+
+  const storeCounts = new Map<string, number>();
+  for (const item of all.items) {
+    storeCounts.set(
+      item.storeNorm,
+      (storeCounts.get(item.storeNorm) ?? 0) + 1,
+    );
+  }
+
+  const topStores = [...storeCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 12)
+    .map(([name]) => name);
+
+  const category: NormCategory | null = (CATEGORIES as readonly string[])
+    .includes(rawCat ?? "")
+    ? (rawCat as NormCategory)
+    : null;
+  const store =
+    rawStore && storeCounts.has(rawStore) ? rawStore : null;
+  const status =
+    rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
+  const sort =
+    rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
+
+  const { items, hasData, lastIngestedAt } = getDealFeed({
+    category,
+    store,
+    status,
+    sort,
+  });
+
+  const current: Record<string, string> = {};
+  if (category) current.cat = category;
+  if (store) current.store = store;
+  if (status !== "all") current.status = status;
+  if (sort !== "latest") current.sort = sort;
 
   const activeCount = items.filter(
-    (item) => item.status === "active",
+    (item) => item.status !== "ended",
   ).length;
-  const mergedCount = items.filter((item) => item.merged).length;
-  const sourceCount = items.reduce(
-    (sum, item) => sum + item.sources.length,
-    0,
-  );
 
   return (
     <main className="page">
@@ -214,22 +251,87 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Toolbar — 아직 미연결(표시만). 필터/정렬은 데이터 확인 후 구현 */}
+      {/* Toolbar — 퀘이사존형: 상태/카테고리 탭 + 쇼핑 카테고리 칩 */}
       <section className="toolbar">
-        <div className="platform-tabs">
-          <button className="active">전체</button>
-          <button>알리익스프레스</button>
-          <button>쿠팡</button>
-          <button>테무</button>
-          <button>네이버</button>
+        <div className="tab-row">
+          <div className="platform-tabs">
+            <a
+              className={status === "all" ? "active" : ""}
+              href={hrefFor(current, { status: null })}
+            >
+              전체
+            </a>
+            <a
+              className={status === "active" ? "active" : ""}
+              href={hrefFor(current, { status: "active" })}
+            >
+              진행중
+            </a>
+            <a
+              className={status === "ended" ? "active" : ""}
+              href={hrefFor(current, { status: "ended" })}
+            >
+              종료
+            </a>
+          </div>
+
+          <div className="platform-tabs">
+            <a
+              className={sort === "latest" ? "active" : ""}
+              href={hrefFor(current, { sort: null })}
+            >
+              최신순
+            </a>
+            <a
+              className={sort === "hot" ? "active" : ""}
+              href={hrefFor(current, { sort: "hot" })}
+            >
+              인기순
+            </a>
+            <a
+              className={sort === "price" ? "active" : ""}
+              href={hrefFor(current, { sort: "price" })}
+            >
+              가격순
+            </a>
+          </div>
         </div>
 
-        <div className="toolbar-right">
-          <select defaultValue="latest">
-            <option value="latest">최신순</option>
-            <option value="hot">인기순</option>
-            <option value="price">가격순</option>
-          </select>
+        <div className="platform-tabs cat-tabs">
+          <a
+            className={category === null ? "active" : ""}
+            href={hrefFor(current, { cat: null })}
+          >
+            전 카테고리
+          </a>
+          {CATEGORIES.map((cat) => (
+            <a
+              key={cat}
+              className={category === cat ? "active" : ""}
+              href={hrefFor(current, { cat })}
+            >
+              {cat}
+            </a>
+          ))}
+        </div>
+
+        <div className="chip-row">
+          <span className="chip-label">쇼핑</span>
+          <a
+            className={store === null ? "chip active" : "chip"}
+            href={hrefFor(current, { store: null })}
+          >
+            전체
+          </a>
+          {topStores.map((name) => (
+            <a
+              key={name}
+              className={store === name ? "chip active" : "chip"}
+              href={hrefFor(current, { store: name })}
+            >
+              {name}
+            </a>
+          ))}
         </div>
       </section>
 
@@ -241,26 +343,21 @@ export default function Home() {
         </div>
 
         <div>
-          <strong>{mergedCount}</strong>
-          <span>멀티 커뮤니티</span>
-        </div>
-
-        <div>
-          <strong>{sourceCount}</strong>
-          <span>개의 원문</span>
-        </div>
-
-        <div>
           <strong>{activeCount}</strong>
-          <span>진행중인 특가</span>
+          <span>진행중</span>
+        </div>
+
+        <div>
+          <strong>{all.items.length}</strong>
+          <span>전체 아이템</span>
         </div>
       </section>
 
-      {/* Item Cards */}
+      {/* Deal Rows */}
       {hasData ? (
         <section className="deal-list">
           {items.map((item) => (
-            <ItemCard key={item.key} item={item} />
+            <DealRow key={item.key} item={item} />
           ))}
         </section>
       ) : (

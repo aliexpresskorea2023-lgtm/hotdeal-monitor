@@ -1,5 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
+import {
+  normalizeCategory,
+  normalizeStore,
+  type NormCategory,
+} from "./taxonomy";
 
 /*
  * 웹 표시용 읽기 쿼리 — 아이템(상품) 기반 뷰.
@@ -73,6 +78,10 @@ export interface ItemView {
   url: string | null;
   urlType: string;
   category: string | null;
+  /** 통합 카테고리 (커뮤니티 네이티브명 매핑 — taxonomy.ts) */
+  categoryNorm: NormCategory;
+  /** 스토어 대표 표기 (별칭 정규화 — taxonomy.ts) */
+  storeNorm: string;
   /** 출처 중 하나라도 진행중이면 진행중 */
   status: PostStatus;
   discount: {
@@ -282,6 +291,8 @@ function buildItem(key: string, members: Member[]): ItemView {
   }
 
   const linked = sources.find((s) => s.url !== null) ?? null;
+  const store = sources.find((s) => s.store !== null)?.store ?? null;
+  const catMember = members.find((m) => m.deal.category) ?? null;
 
   const postedTimes = sources
     .map((s) => s.postedAt)
@@ -297,11 +308,15 @@ function buildItem(key: string, members: Member[]): ItemView {
     priceText,
     shipping,
     shippingText,
-    store: sources.find((s) => s.store !== null)?.store ?? null,
+    store,
     url: linked?.url ?? null,
     urlType: linked?.urlType ?? "none",
-    category:
-      members.find((m) => m.deal.category)?.deal.category ?? null,
+    category: catMember?.deal.category ?? null,
+    categoryNorm: normalizeCategory(
+      catMember?.post.community ?? "",
+      catMember?.deal.category ?? null,
+    ),
+    storeNorm: normalizeStore(store),
     status,
     discount: {
       type: [
@@ -325,15 +340,42 @@ function buildItem(key: string, members: Member[]): ItemView {
   };
 }
 
+export interface FeedOptions {
+  /** 조회 대상 게시글 수 상한 (아이템 기준 아님) */
+  postLimit?: number;
+  /** 통합 카테고리 필터 */
+  category?: NormCategory | null;
+  /** 스토어 대표 표기 필터 */
+  store?: string | null;
+  /**
+   * 상태 필터. active는 진행중+상태 모름을 포함한다
+   * (임시 정책: 상태 모름은 진행중으로 노출).
+   */
+  status?: "all" | "active" | "ended";
+  sort?: "latest" | "hot" | "price";
+}
+
+/** 출처 stats 합산 인기 점수 — 추천이 조회수보다 상위 가중치. */
+function hotScore(item: ItemView): number {
+  let rec = 0;
+  let views = 0;
+
+  for (const source of item.sources) {
+    rec += source.stats.recommendations ?? 0;
+    views += source.stats.views ?? 0;
+  }
+
+  return rec * 100_000_000 + views;
+}
+
 /**
- * 아이템 단위 피드를 만든다.
- *
- * @param postLimit 조회 대상 게시글 수 상한 (아이템 기준 아님)
+ * 아이템 단위 피드를 만든다. 필터/정렬은 여기서 적용한다.
  */
 export function getDealFeed(
-  postLimit = 500,
+  options: FeedOptions = {},
   dbPath: string = DEFAULT_DB_PATH,
 ): FeedResult {
+  const postLimit = options.postLimit ?? 500;
   const db = openDbReadOnly(dbPath);
 
   if (!db) return { items: [], hasData: false, lastIngestedAt: null };
@@ -394,16 +436,46 @@ export function getDealFeed(
       else groups.set(key, [member]);
     }
 
-    const items = [...groups.entries()].map(([key, members]) =>
+    let items = [...groups.entries()].map(([key, members]) =>
       buildItem(key, members),
     );
 
-    items.sort(
-      (a, b) =>
-        (a.status === "ended" ? 1 : 0) - (b.status === "ended" ? 1 : 0) ||
+    if (options.category) {
+      items = items.filter((i) => i.categoryNorm === options.category);
+    }
+
+    if (options.store) {
+      items = items.filter((i) => i.storeNorm === options.store);
+    }
+
+    if (options.status === "active") {
+      items = items.filter((i) => i.status !== "ended");
+    } else if (options.status === "ended") {
+      items = items.filter((i) => i.status === "ended");
+    }
+
+    const sort = options.sort ?? "latest";
+
+    items.sort((a, b) => {
+      /* 종료는 어떤 정렬에서도 맨 아래. */
+      const endedDiff =
+        (a.status === "ended" ? 1 : 0) - (b.status === "ended" ? 1 : 0);
+      if (endedDiff !== 0) return endedDiff;
+
+      if (sort === "hot") {
+        const diff = hotScore(b) - hotScore(a);
+        if (diff !== 0) return diff;
+      } else if (sort === "price") {
+        const pa = a.price ?? Number.POSITIVE_INFINITY;
+        const pb = b.price ?? Number.POSITIVE_INFINITY;
+        if (pa !== pb) return pa - pb;
+      }
+
+      return (
         b.collectedAt.localeCompare(a.collectedAt) ||
-        a.key.localeCompare(b.key),
-    );
+        a.key.localeCompare(b.key)
+      );
+    });
 
     return { items, hasData: true, lastIngestedAt: lastIngest(db) };
   } finally {
