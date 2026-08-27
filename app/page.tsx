@@ -87,11 +87,7 @@ export default async function Home({ searchParams }: PageProps) {
       <main className="page">
         <header className="page-head">
           <div>
-            <h1>특가 모음</h1>
-            <p>
-              펨코 · 뽐뿌 · 루리웹 · 퀘이사존 · 아카라이브의 특가 글을 상품
-              단위로 합쳐 보여줍니다.
-            </p>
+            <h1>핫딜 모음</h1>
           </div>
 
           <dl className="stat-cards">

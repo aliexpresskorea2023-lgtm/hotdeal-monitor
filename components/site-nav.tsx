@@ -7,7 +7,7 @@ import Link from "next/link";
  */
 
 const MENU = [
-  { key: "deals", href: "/", label: "특가 모음" },
+  { key: "deals", href: "/", label: "핫딜 모음" },
   { key: "history", href: "/history", label: "최저가 히스토리" },
 ] as const;
 
@@ -31,7 +31,6 @@ export function SiteNav({
           </span>
           <span className="brand-text">
             <strong>핫딜 모니터</strong>
-            <small>커뮤니티 특가 통합</small>
           </span>
         </Link>
 
