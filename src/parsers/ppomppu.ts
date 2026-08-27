@@ -673,6 +673,13 @@ type ProductGroup = {
   link: { raw: string | null; resolved: string | null } | null;
 };
 
+/**
+ * 가격 마커 — 그룹핑과 단일 가격 추출이 공유한다.
+ * "정가/정상가" 계열 원가 마커는 별도 제외 로직에서만 쓴다.
+ */
+const PRICE_MARKER =
+  /최대\s*혜택가|혜택가|체감가|판매가|할인가|쿠폰\s*가|최종가|구매가/;
+
 function groupProductSections(
   lines: BlockLine[],
 ): ProductGroup[] {
@@ -721,6 +728,44 @@ function groupProductSections(
       }
 
       continue;
+    }
+
+    /*
+     * 마커 가격 라인 — "혜택가 218만원대",
+     * "갤럭시 워치9 40mm 블루투스 체감가 👉469,010원"처럼
+     * 가격 마커가 붙은 라인은 가격 전용 라인이 아니지만
+     * 가격을 담고 있다. 이걸 일반 텍스트(상품명 후보)로만
+     * 취급하면 상품명/가격/링크가 실제로 반복되는 글이
+     * 그룹핑되지 않아 상품 링크가 통째로 버려진다.
+     *
+     * - 마커 앞에 텍스트가 있으면 그 부분이 상품명이다
+     *   (한 라인에 이름+가격이 같이 쓰는 패턴).
+     * - 마커로 시작하면 상품명은 이전 라인의 것을 유지한다
+     *   (이름/가격/링크가 각각 별도 라인인 패턴).
+     *
+     * 가격은 0 초과만 채택 (가격 전용 라인과 동일 정책).
+     */
+    const markerMatch = line.text.match(PRICE_MARKER);
+
+    if (markerMatch && markerMatch.index !== undefined) {
+      const parsed = parsePriceText(line.text);
+
+      if (
+        (parsed.price !== null && parsed.price > 0) ||
+        parsed.range !== null
+      ) {
+        const namePart = cleanText(
+          line.text.slice(0, markerMatch.index),
+        );
+
+        if (namePart) {
+          pendingName = namePart;
+        }
+
+        pendingPrice = parsed;
+
+        continue;
+      }
     }
 
     /*
@@ -812,9 +857,6 @@ function extractSinglePrice(
   bodyText: string,
   title: string,
 ): ParsedPrice | null {
-  const primaryMarker =
-    /최대\s*혜택가|혜택가|체감가|판매가|할인가|쿠폰\s*가|최종가|구매가/;
-
   const originalMarker =
     /정가|정상가|할인\s*전|원래\s*가|시중가|소비자\s*가/;
 
@@ -823,7 +865,7 @@ function extractSinglePrice(
       continue;
     }
 
-    if (!primaryMarker.test(line.text)) {
+    if (!PRICE_MARKER.test(line.text)) {
       continue;
     }
 

@@ -153,6 +153,32 @@ export function parseRuliwebHtml(
     textWithBlockNewlines(body),
   );
 
+  const { bodyLinks, internalLinks } = collectBodyLinks(
+    $,
+    body,
+    sourcePostId,
+  );
+
+  /*
+   * 상품 링크는 출처 필드가 우선이다. 작성자가 출처를 남기지
+   * 않은 글은 본문 외부 링크가 유일한 구매 경로인 경우가 많다
+   * (이미지/내부 게시글 링크는 collectBodyLinks에서 이미 제외).
+   * 다만 링크가 2개 이상이면 어느 것이 상품 링크인지 단정할 수
+   * 없어 null로 둔다 — 잘못된 링크를 보여주는 것보다 없는 편이
+   * 낫다. (원본 유지 원칙: 임의 선택 금지)
+   */
+  let productLink: {
+    rawUrl: string | null;
+    resolved: string | null;
+  } = sourceLink;
+
+  if (productLink.resolved === null && bodyLinks.length === 1) {
+    productLink = {
+      rawUrl: bodyLinks[0].raw,
+      resolved: bodyLinks[0].resolved,
+    };
+  }
+
   const products: RuliwebProduct[] = [];
 
   /*
@@ -175,24 +201,18 @@ export function parseRuliwebHtml(
       shipping: titleInfo.shipping,
       shippingText: titleInfo.shippingText,
       store: titleInfo.store,
-      url: sourceLink.resolved,
+      url: productLink.resolved,
       urlType: detectUrlType(
-        sourceLink.resolved,
-        sourceLink.rawUrl,
+        productLink.resolved,
+        productLink.rawUrl,
       ),
-      rawUrl: sourceLink.rawUrl,
+      rawUrl: productLink.rawUrl,
     });
   }
 
   const stats = extractStats($);
   const discount = extractDiscount(bodyText);
   const status = extractStatus(title, bodyText);
-
-  const { bodyLinks, internalLinks } = collectBodyLinks(
-    $,
-    body,
-    sourcePostId,
-  );
 
   const affiliate = detectAffiliate(bodyText);
 
