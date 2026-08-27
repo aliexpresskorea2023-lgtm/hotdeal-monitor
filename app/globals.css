@@ -212,6 +212,22 @@ a {
   letter-spacing: 0.04em;
 }
 
+.deal-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.merged-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: #555;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .deal-content {
   padding: 12px 20px 18px;
 }
@@ -289,6 +305,57 @@ a {
   line-height: 1.5;
 }
 
+/* 출처 게시글 목록 (아이템 카드 안) */
+
+.source-list {
+  margin-top: 15px;
+  padding-top: 6px;
+  border-top: 1px solid #eeeeeb;
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f2f2ef;
+  font-size: 12px;
+}
+
+.source-row:last-child {
+  border-bottom: none;
+}
+
+.source-platform {
+  flex-shrink: 0;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--soft);
+  color: #666;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.source-title {
+  flex: 1;
+  min-width: 0;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-row:hover .source-title {
+  color: #000;
+}
+
+.source-meta {
+  flex-shrink: 0;
+  color: #999;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .price-history {
   display: flex;
   justify-content: space-between;
@@ -357,6 +424,9 @@ a {
   color: #bbb;
   font-family: monospace;
   font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Mobile */

@@ -2,21 +2,42 @@ import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 
 /*
- * 웹 표시용 읽기 쿼리.
+ * 웹 표시용 읽기 쿼리 — 아이템(상품) 기반 뷰.
  *
  * 페이지는 아래 뷰 타입만 소비한다 — 수집 스키마(posts/deals)와
  * 표시 형태를 여기서 분리해 두면, 프론트 디자인이나 노출 기준이
  * 바뀌어도 이 파일만 고치면 된다.
  *
- * 현재 노출 규칙(데이터 확인 단계, 최소 구성):
- * - 상품이 1개 이상 파싱된 게시글만 (자유형/폼 미입력 글 제외)
- * - 종료 딜 포함 전부 표시, 진행중·상태 모름 → 종료 순서로
- * - 정렬은 게시글 마지막 적재 시각 내림차순
- * 추후 필터(커뮤니티/스토어 탭), 정렬, 페이지네이션을 여기 추가한다.
+ * 표시 단위: 게시글이 아니라 아이템.
+ * 같은 구매 URL을 가진 딜은 커뮤니티와 무관하게 카드 1개로
+ * 병합하고, 카드 안에 출처 게시글 목록을 복수로 붙인다.
+ * (설계 메모: 상품은 커뮤니티 위에 있다. 커뮤니티는 카드의 속성.)
+ *
+ * 식별 키 단계:
+ *   현재  — 구매 URL 정규화(파라미터/프래그먼트 정리) 기반.
+ *   다음  — 상품 ID(item_id) 매칭. 같은 상품을 가리키는 서로
+ *           다른 URL까지 병합하려면 이 단계가 필요하다.
+ *
+ * 노출 규칙:
+ * - 상품이 1개 이상 파싱된 게시글만 대상 (자유형/폼 미입력 제외)
+ * - 구매 링크가 없는 딜은 병합할 수 없어 단독 카드로 남는다
+ * - 종료 딜 포함. 진행중·상태 모름 → 종료 순서로 정렬
+ * - 게시글 500개 상한 조회 후 아이템 조립
  */
 
-export interface ProductView {
+export type PostStatus = "active" | "ended" | "unknown";
+
+/** 아이템의 출처 게시글 하나. */
+export interface ItemSourceView {
+  /** `${community}-${post_id}` — 출처 간 유일 키 */
+  id: string;
+  source: string;
+  title: string;
+  sourceUrl: string;
+  status: PostStatus;
+  /** 이 출처 딜의 상품명 (없으면 표시는 아이템 대표 이름 사용) */
   name: string | null;
+  /** 이 게시글에 적힌 그 딜의 가격 (아이템 대표 가격과 다를 수 있음) */
   price: number | null;
   currency: string;
   priceText: string;
@@ -25,42 +46,50 @@ export interface ProductView {
   store: string | null;
   url: string | null;
   urlType: string;
-}
-
-export interface PostView {
-  /** `${community}-${post_id}` — 표시용 안정 키 */
-  id: string;
-  source: string;
-  sourcePostId: string;
-  sourceUrl: string;
-  title: string;
-  /** 상품 단위 카테고리 중 첫 번째 값. 상품 묶음(productKey) 단계에서 재설계 예정. */
-  category: string | null;
-  products: ProductView[];
-  status: "active" | "ended" | "unknown";
+  postedAt: string | null;
+  /** 이 게시글의 마지막 적재(갱신) 시각 */
+  collectedAt: string;
   stats: {
     views: number | null;
     recommendations: number | null;
     comments: number | null;
   };
+}
+
+/** 카드 단위 = 아이템. 여러 출처가 병합될 수 있다. */
+export interface ItemView {
+  /** 식별 키: 정규화 URL 또는 단독 딜의 `post:<community>:<id>#<seq>` */
+  key: string;
+  /** 출처 2개 이상으로 병합된 카드인지 */
+  merged: boolean;
+  name: string | null;
+  /** 출처들 중 대표 통화 기준 최저가 */
+  price: number | null;
+  currency: string;
+  priceText: string;
+  shipping: number | null;
+  shippingText: string | null;
+  store: string | null;
+  url: string | null;
+  urlType: string;
+  category: string | null;
+  /** 출처 중 하나라도 진행중이면 진행중 */
+  status: PostStatus;
   discount: {
     type: string[];
     codes: string[];
     description: string;
   };
-  sourceMeta: {
-    affiliate: boolean;
-    rawUrl: string | null;
-    rawPrice: string | null;
-    rawShipping: string | null;
-  };
+  /** 가장 이른 출처 작성 시각 */
   postedAt: string | null;
-  /** 마지막 적재(갱신) 시각 — 수집 워커가 마지막으로 확인한 시점 */
+  /** 가장 최근 출처 갱신 시각 */
   collectedAt: string;
+  /** 최신 확인 순으로 정렬된 출처 목록 */
+  sources: ItemSourceView[];
 }
 
 export interface FeedResult {
-  posts: PostView[];
+  items: ItemView[];
   /** DB가 없거나 비어 있으면 "수집 이력 없음" 안내용 */
   hasData: boolean;
   lastIngestedAt: string | null;
@@ -102,6 +131,11 @@ interface DealRow {
   discount_description: string | null;
 }
 
+interface Member {
+  post: PostRow;
+  deal: DealRow;
+}
+
 /** 파싱 실패 대비가 필요한 JSON 배열 컬럼. */
 function parseJsonArray(raw: string | null): string[] {
   if (!raw) return [];
@@ -114,18 +148,195 @@ function parseJsonArray(raw: string | null): string[] {
   }
 }
 
-/**
- * 표시할 게시글+상품 피드를 만든다.
+/*
+ * 아이템 식별 키 만들기 (1단계: URL 정규화).
  *
- * @param limit 표시할 게시글 수 상한 (상품이 아닌 게시글 기준)
+ * 규칙:
+ * - 스킴 무시 (http/https 동일 상품 취급), 호스트 소문자
+ * - 프래그먼트 제거 (옵션 앵커 #... 는 상품 정체성이 아님)
+ * - 흔한 트래킹 파라미터 제거 (utm_*, spm, scm, fbclid 등).
+ *   파라미터 순서는 정렬해 표기 차이로 갈라지는 것을 방지
+ * - 나머지 쿼리는 보존 — 상품 식별자가 쿼리에 있는 스토어가 있다
+ * - 파싱 실패(이상한 URL) 시 null → 호출 쪽에서 단독 카드로 처리
+ */
+const TRACKING_PARAM =
+  /^(utm_[a-z]+|fbclid|gclid|igshid?|si|nclid|ref|ref_src|spm|scm)$/i;
+
+function productKeyFromUrl(raw: string): string | null {
+  try {
+    const parsed = new URL(raw);
+
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      if (TRACKING_PARAM.test(key)) {
+        parsed.searchParams.delete(key);
+      }
+    }
+
+    parsed.searchParams.sort();
+
+    const host = parsed.host.toLowerCase();
+    const path = parsed.pathname.replace(/\/+$/, "");
+    const query = parsed.searchParams.toString();
+
+    return `${host}${path}${query ? `?${query}` : ""}`;
+  } catch {
+    return null;
+  }
+}
+
+function statusOf(row: PostRow): PostStatus {
+  if (row.status === "active" || row.status === "ended") {
+    return row.status;
+  }
+
+  return "unknown";
+}
+
+function makeSource(member: Member): ItemSourceView {
+  const { post, deal } = member;
+
+  return {
+    id: `${post.community}-${post.post_id}`,
+    source: post.community,
+    title: post.title,
+    sourceUrl: post.url,
+    status: statusOf(post),
+    name: deal.product_name,
+    price: deal.deal_price,
+    currency: deal.currency,
+    priceText: deal.price_text,
+    shipping: deal.shipping,
+    shippingText: deal.shipping_text,
+    store: deal.store,
+    url: deal.product_url,
+    urlType: deal.url_type,
+    postedAt: post.posted_at,
+    collectedAt: post.last_seen_at,
+    stats: {
+      views: post.views,
+      recommendations: post.recommendations,
+      comments: post.comments,
+    },
+  };
+}
+
+function buildItem(key: string, members: Member[]): ItemView {
+  /* 최신 확인 순. 같으면 게시판 내 순서대로. */
+  members.sort(
+    (a, b) =>
+      b.post.last_seen_at.localeCompare(a.post.last_seen_at) ||
+      a.deal.seq - b.deal.seq,
+  );
+
+  /* 같은 게시글에서 들어온 중복 멤버는 첫 번째만 남긴다. */
+  const sources: ItemSourceView[] = [];
+  const seenPosts = new Set<string>();
+
+  for (const member of members) {
+    const postId = `${member.post.community}-${member.post.post_id}`;
+
+    if (seenPosts.has(postId)) continue;
+
+    seenPosts.add(postId);
+    sources.push(makeSource(member));
+  }
+
+  const status: PostStatus = sources.some((s) => s.status === "active")
+    ? "active"
+    : sources.some((s) => s.status === "unknown")
+      ? "unknown"
+      : "ended";
+
+  /* 대표 이름: 최신 출처 중 이름이 있는 것. */
+  const named = sources.find((s) => s.name !== null) ?? sources[0];
+
+  /*
+   * 대표 가격: 가격 있는 출처 중 최신 출처의 통화를 기준으로
+   * 그 통화인 출처들의 최저가. 통화가 뒤섞인 채 최저를 구하는
+   * 것은 무의미하므로 기준 통화를 먼저 고정한다.
+   */
+  const priced = sources.filter((s) => s.price !== null);
+  let price: number | null = null;
+  let currency = named.currency;
+  let priceText = named.priceText;
+  let shipping = named.shipping;
+  let shippingText = named.shippingText;
+
+  if (priced.length > 0) {
+    const baseCurrency = priced[0].currency;
+    const sameCurrency = priced.filter((s) => s.currency === baseCurrency);
+
+    let best = sameCurrency[0];
+
+    for (const candidate of sameCurrency) {
+      if ((candidate.price as number) < (best.price as number)) {
+        best = candidate;
+      }
+    }
+
+    price = best.price;
+    currency = best.currency;
+    priceText = best.priceText;
+    shipping = best.shipping;
+    shippingText = best.shippingText;
+  }
+
+  const linked = sources.find((s) => s.url !== null) ?? null;
+
+  const postedTimes = sources
+    .map((s) => s.postedAt)
+    .filter((t): t is string => t !== null)
+    .sort();
+
+  return {
+    key,
+    merged: sources.length >= 2,
+    name: named.name,
+    price,
+    currency,
+    priceText,
+    shipping,
+    shippingText,
+    store: sources.find((s) => s.store !== null)?.store ?? null,
+    url: linked?.url ?? null,
+    urlType: linked?.urlType ?? "none",
+    category:
+      members.find((m) => m.deal.category)?.deal.category ?? null,
+    status,
+    discount: {
+      type: [
+        ...new Set(
+          members.flatMap((m) => parseJsonArray(m.deal.discount_types)),
+        ),
+      ],
+      codes: [
+        ...new Set(
+          members.flatMap((m) => parseJsonArray(m.deal.discount_codes)),
+        ),
+      ],
+      description:
+        members
+          .map((m) => m.deal.discount_description)
+          .find((d) => d !== null && d.trim() !== "") ?? "",
+    },
+    postedAt: postedTimes[0] ?? null,
+    collectedAt: sources[0].collectedAt,
+    sources,
+  };
+}
+
+/**
+ * 아이템 단위 피드를 만든다.
+ *
+ * @param postLimit 조회 대상 게시글 수 상한 (아이템 기준 아님)
  */
 export function getDealFeed(
-  limit = 500,
+  postLimit = 500,
   dbPath: string = DEFAULT_DB_PATH,
 ): FeedResult {
   const db = openDbReadOnly(dbPath);
 
-  if (!db) return { posts: [], hasData: false, lastIngestedAt: null };
+  if (!db) return { items: [], hasData: false, lastIngestedAt: null };
 
   try {
     const postRows = db
@@ -139,10 +350,10 @@ export function getDealFeed(
                   last_seen_at DESC, id DESC
          LIMIT ?`,
       )
-      .all(limit) as unknown as PostRow[];
+      .all(postLimit) as unknown as PostRow[];
 
     if (postRows.length === 0) {
-      return { posts: [], hasData: false, lastIngestedAt: lastIngest(db) };
+      return { items: [], hasData: false, lastIngestedAt: lastIngest(db) };
     }
 
     const placeholders = postRows.map(() => "?").join(", ");
@@ -158,59 +369,43 @@ export function getDealFeed(
       )
       .all(...postRows.map((row) => row.rowid)) as unknown as DealRow[];
 
-    const dealsByPost = new Map<number, DealRow[]>();
-    for (const deal of dealRows) {
-      const list = dealsByPost.get(deal.post_rowid);
-      if (list) list.push(deal);
-      else dealsByPost.set(deal.post_rowid, [deal]);
+    const postByRowid = new Map<number, PostRow>();
+    for (const row of postRows) {
+      postByRowid.set(row.rowid, row);
     }
 
-    const posts: PostView[] = postRows.map((row) => {
-      const deals = dealsByPost.get(row.rowid) ?? [];
-      const first = deals[0];
+    /* 식별 키 → 멤버 목록. 키가 없으면(링크 없음) 단독 카드. */
+    const groups = new Map<string, Member[]>();
 
-      return {
-        id: `${row.community}-${row.post_id}`,
-        source: row.community,
-        sourcePostId: row.post_id,
-        sourceUrl: row.url,
-        title: row.title,
-        category: deals.find((d) => d.category)?.category ?? null,
-        products: deals.map((d) => ({
-          name: d.product_name,
-          price: d.deal_price,
-          currency: d.currency,
-          priceText: d.price_text,
-          shipping: d.shipping,
-          shippingText: d.shipping_text,
-          store: d.store,
-          url: d.product_url,
-          urlType: d.url_type,
-        })),
-        status: row.status as PostView["status"],
-        stats: {
-          views: row.views,
-          recommendations: row.recommendations,
-          comments: row.comments,
-        },
-        discount: {
-          type: [...new Set(deals.flatMap((d) => parseJsonArray(d.discount_types)))],
-          codes: [...new Set(deals.flatMap((d) => parseJsonArray(d.discount_codes)))],
-          description:
-            deals.find((d) => d.discount_description)?.discount_description ?? "",
-        },
-        sourceMeta: {
-          affiliate: row.affiliate_enabled === 1,
-          rawUrl: row.affiliate_raw_url,
-          rawPrice: first?.raw_price ?? null,
-          rawShipping: first?.raw_shipping ?? null,
-        },
-        postedAt: row.posted_at,
-        collectedAt: row.last_seen_at,
-      };
-    });
+    for (const deal of dealRows) {
+      const post = postByRowid.get(deal.post_rowid);
+      if (!post) continue;
 
-    return { posts, hasData: true, lastIngestedAt: lastIngest(db) };
+      const member: Member = { post, deal };
+      const urlKey = deal.product_url
+        ? productKeyFromUrl(deal.product_url)
+        : null;
+      const key =
+        urlKey ??
+        `post:${post.community}:${post.post_id}#${deal.seq}`;
+
+      const list = groups.get(key);
+      if (list) list.push(member);
+      else groups.set(key, [member]);
+    }
+
+    const items = [...groups.entries()].map(([key, members]) =>
+      buildItem(key, members),
+    );
+
+    items.sort(
+      (a, b) =>
+        (a.status === "ended" ? 1 : 0) - (b.status === "ended" ? 1 : 0) ||
+        b.collectedAt.localeCompare(a.collectedAt) ||
+        a.key.localeCompare(b.key),
+    );
+
+    return { items, hasData: true, lastIngestedAt: lastIngest(db) };
   } finally {
     db.close();
   }
