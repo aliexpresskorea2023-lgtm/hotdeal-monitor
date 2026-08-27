@@ -187,11 +187,15 @@ launchd 구성: `collector/com.beomjun.hotdeal-monitor.pipeline.plist`(Label `co
 
 **수리 스크립트 일반화**: `scripts/repair-ppomppu-prices.ts` → `scripts/repair-ppomppu-deals.ts`(`git mv`). 가격 필드만 수리하던 것을 인제스트 upsert와 동일한 파서 파생 필드 전체(상품명·카테고리·스토어·item_id·가격·배송·URL·url_type·할인) 동기화로 확장, `--dry-run` 지원, 딜 개수 불일치 게시글은 건너뜀. 실측: 303722 ×5(상품명+링크 복원) + 303702 ×3(raw_price를 인제스트 시맨틱인 null로 환원) = 8건 수리, 재감사 0건. 뷰 레이어 확인: 아이템 375개 중 LG그램 5로우 이름·가격·스마트스토어 링크 정상, `[공구` 잔존 0.
 
+### 디자인 시스템: shadcn + Tailwind 토큰 (2026-08-27)
+
+v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components.json`·`lib/utils.ts`·`components/ui/*`: button/badge/card/tabs/select/skeleton/separator). **컬러웨이 = `app/globals.css`의 `:root` 토큰 블록 한 곳** — 기존 라이트 팔레트를 shadcn 시맨틱으로 매핑해 초기값으로 사용(`--primary` #111, `--muted-foreground` #777, `--background` #f5f5f3, `--muted/--accent/--secondary` #f0f0ed). 테마 에디터(ui.shadcn.io/themes) 출력으로 이 블록만 swap하면 전체 컴포넌트가 따라감. 기존 커스텀 CSS(로우/칩 클래스)는 비레이어로 공존 — 구 시맨틱 참조는 `--primary`/`--muted-foreground`로 개명 완료, 렌더 무변경 검증(375 로우). v0 산출물은 동일 토큰·동일 컴포넌트 가정 하에 **표현층만** 이식(데이터 레이어 `getDealFeed` + 쿼리스트링 계약 유지). `.dark` 블록은 shadcn 기본값 대기 중(다크 모드 태스크).
+
 ## 향후 프론트엔드 설계 메모
 
 - **[1단계 완료]** 아이템 카드 병합 — 정규화 URL 기반(위 섹션). 남은 단계: **아이템 ID 매칭** — 같은 상품을 가리키는 서로 다른 URL(스토어별 링크, 단축링크 변형)까지 병합. 수집 시 파서가 남기는 item_id 신호가 재료.
 - **[필터/정렬 완료]** 상태·카테고리·스토어 필터 + 3종 정렬이 쿼리스트링으로 실연결(위 "퀘이사존형" 섹션). 남은 축: **커뮤니티 탭** — 설계 원칙: 각 커뮤니티 탭에서도 동일 아이템 카드가 보이고 커뮤니티는 카드의 속성 목록으로 남는다. 그리고 **다크 모드 토글**(`:root` 변수 교체).
-- 상세 뷰 + 가격 변동 히스토리 — `price_observations`(append-only) 재료가 이미 쌓이는 중.
+- **최저가 히스토리 = 상단 내비 두 번째 탭** (v0 시안 2026-08-27에서 mock 버튼으로 배치 확정 — 실구현은 추후). `price_observations`(append-only) 재료가 이미 쌓이는 중. 상세 뷰와 연계 설계.
 - 페이지네이션 — 현재 게시글 500개 상한 조회 후 아이템 조립.
 
 ## 배포 방향 (2026-08-27)
