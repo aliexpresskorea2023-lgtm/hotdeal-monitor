@@ -12,21 +12,34 @@
  *   상품권/쿠폰으로, ruliweb "PC/가전"은 PC 부품·모니터가 다수라
  *   PC/하드웨어로 매핑 — 2026-08-27 표본 확인)
  * - 매핑 없는 값은 전부 "기타".
+ *
+ * 무형 제외 정책 (2026-08-27): 게임/SW·상품권/쿠폰·포인트/래플은
+ * 무형 아이템이라 수집·노출에서 제외한다. 매핑 자체는 유지해서
+ * 제외 판정(exclusion.ts)이 네이티브명 대신 통합명으로 하게 한다.
+ * 게임"하드웨어"(콘솔·주변기기)는 실물이므로 게임/SW와 분리해
+ * 노출 카테고리로 유지한다.
  */
 
+/** 화면에 노출하는 카테고리 (무형 제외). */
 export const CATEGORIES = [
   "PC/하드웨어",
-  "게임/SW",
+  "게임/하드웨어",
   "노트북/모바일",
   "가전/TV",
   "생활/식품",
   "패션/뷰티",
-  "상품권/쿠폰",
-  "포인트/래플",
   "기타",
 ] as const;
 
-export type NormCategory = (typeof CATEGORIES)[number];
+/** 노출 카테고리 + 무형(제외 대상) 카테고리를 아우르는 전체 집합. */
+export const ALL_NORM_CATEGORIES = [
+  ...CATEGORIES,
+  "게임/SW",
+  "상품권/쿠폰",
+  "포인트/래플",
+] as const;
+
+export type NormCategory = (typeof ALL_NORM_CATEGORIES)[number];
 
 /** 커뮤니티 네이티브 카테고리 → 통합 카테고리 */
 const CATEGORY_MAP: Record<string, Record<string, NormCategory>> = {
@@ -78,7 +91,7 @@ const CATEGORY_MAP: Record<string, Record<string, NormCategory>> = {
   },
   ruliweb: {
     "게임S/W": "게임/SW",
-    "게임H/W": "게임/SW",
+    "게임H/W": "게임/하드웨어",
     음식: "생활/식품",
     생활용품: "생활/식품",
     상품권: "상품권/쿠폰",

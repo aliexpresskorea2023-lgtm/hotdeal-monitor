@@ -15,6 +15,7 @@ import {
 } from "../src/parsers/normalize";
 import type { Deal } from "../src/parsers/types";
 import { DEFAULT_DB_PATH, nowKstIso, openDb } from "../src/db";
+import { checkExclusion } from "../src/db/exclusion";
 
 /*
  * 크롤 run → SQLite 적재 (인제스트)
@@ -144,6 +145,8 @@ function upsertPost(
   entry: ManifestEntry,
   post: NativePostView,
   snapshotPath: string,
+  /** 제외 규칙 적용 후 실제로 적재한 상품 수 (워커 동결 기준). */
+  productsCount: number,
 ): number {
   const now = nowKstIso();
   const affiliate = affiliateOf(post);
@@ -180,7 +183,7 @@ function upsertPost(
     post.stats.comments,
     affiliate.enabled ? 1 : 0,
     affiliate.rawUrl,
-    post.products.length,
+    productsCount,
     now,
     now,
     snapshotPath,
@@ -376,6 +379,22 @@ function ingestRun(db: Db, runDir: string): RunSummary {
     }
 
     const deals = pipeline.normalize(post as unknown as never);
+
+    /*
+     * 무형·비핫딜 제외 (정책 2026-08-27): 상품권·SW·포인트, 홍보글,
+     * 항공권·이용권류, 0원 딜은 적재하지 않는다. 남은 상품이
+     * 없으면 products_count=0 → 수집 워커가 재확인 없이 동결.
+     */
+    const keptDeals = deals.filter(
+      (deal) =>
+        !checkExclusion({
+          community: entry.community,
+          category: deal.product.category,
+          title: post.title,
+          price: deal.price.dealPrice,
+        }).excluded,
+    );
+
     const snapshotPath = `${manifest.runId}/${entry.snapshot}`;
 
     const postRowid = upsertPost(
@@ -384,6 +403,7 @@ function ingestRun(db: Db, runDir: string): RunSummary {
       entry,
       post,
       snapshotPath,
+      keptDeals.length,
     );
 
     summary.snapshots += 1;
@@ -392,9 +412,9 @@ function ingestRun(db: Db, runDir: string): RunSummary {
     /* 이전 적재 때 더 많은 상품이 있었다면 잔여 deal 행 정리. */
     db.prepare(
       `DELETE FROM deals WHERE post_rowid = ? AND seq >= ?`,
-    ).run(postRowid, deals.length);
+    ).run(postRowid, keptDeals.length);
 
-    for (const [seq, deal] of deals.entries()) {
+    for (const [seq, deal] of keptDeals.entries()) {
       const dealRowid = upsertDeal(db, postRowid, seq, deal);
 
       summary.deals += 1;

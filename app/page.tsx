@@ -132,11 +132,11 @@ function DealRow({ item }: { item: ItemView }) {
 
         <a
           className="row-title"
-          href={item.url ?? item.sources[0].sourceUrl}
+          href={item.url ?? item.firstSource.sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
         >
-          {item.name ?? item.sources[0].title}
+          {item.name ?? item.firstSource.title}
         </a>
 
         <span className="row-cat">{item.categoryNorm}</span>
@@ -156,6 +156,15 @@ function DealRow({ item }: { item: ItemView }) {
         {recommendations > 0 && (
           <span className="row-rec">★ {formatNumber(recommendations)}</span>
         )}
+
+        <a
+          className="row-original"
+          href={item.firstSource.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          원문 보기
+        </a>
 
         <span className="row-time">
           {timeAgo(item.postedAt ?? item.collectedAt)}

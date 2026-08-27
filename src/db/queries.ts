@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
+import { checkExclusion } from "./exclusion";
 import {
   normalizeCategory,
   normalizeStore,
@@ -25,9 +26,14 @@ import {
  *
  * 노출 규칙:
  * - 상품이 1개 이상 파싱된 게시글만 대상 (자유형/폼 미입력 제외)
+ * - 무형·비핫딜 딜 제외 (exclusion.ts — 상품권/SW/포인트, 홍보글,
+ *   항공권·이용권류, 0원 딜). 인제스트가 1차 방어, 여기가 2차.
  * - 구매 링크가 없는 딜은 병합할 수 없어 단독 카드로 남는다
  * - 종료 딜 포함. 진행중·상태 모름 → 종료 순서로 정렬
  * - 게시글 500개 상한 조회 후 아이템 조립
+ *
+ * 가격 정렬은 원화 환산 기준 — 달러/엔 등 외화는 대략 환율로
+ * 환산해 비교한다 (FX_TO_KRW 주석 참고).
  */
 
 export type PostStatus = "active" | "ended" | "unknown";
@@ -52,6 +58,8 @@ export interface ItemSourceView {
   url: string | null;
   urlType: string;
   postedAt: string | null;
+  /** 이 게시글의 첫 적재 시각 (원문 랜딩 폴백 기준) */
+  firstSeenAt: string;
   /** 이 게시글의 마지막 적재(갱신) 시각 */
   collectedAt: string;
   stats: {
@@ -93,6 +101,11 @@ export interface ItemView {
   postedAt: string | null;
   /** 가장 최근 출처 갱신 시각 */
   collectedAt: string;
+  /**
+   * 원문 랜딩 대상: 게시 시간이 가장 빠른 출처.
+   * 작성 시각이 없으면 첫 적재 시각으로 비교한다.
+   */
+  firstSource: ItemSourceView;
   /** 최신 확인 순으로 정렬된 출처 목록 */
   sources: ItemSourceView[];
 }
@@ -117,6 +130,7 @@ interface PostRow {
   comments: number | null;
   affiliate_enabled: number;
   affiliate_raw_url: string | null;
+  first_seen_at: string;
   last_seen_at: string;
 }
 
@@ -220,6 +234,7 @@ function makeSource(member: Member): ItemSourceView {
     url: deal.product_url,
     urlType: deal.url_type,
     postedAt: post.posted_at,
+    firstSeenAt: post.first_seen_at,
     collectedAt: post.last_seen_at,
     stats: {
       views: post.views,
@@ -299,6 +314,17 @@ function buildItem(key: string, members: Member[]): ItemView {
     .filter((t): t is string => t !== null)
     .sort();
 
+  /*
+   * 원문 랜딩 대상 = 게시 시간이 가장 빠른 출처.
+   * 사이트가 작성 시각을 안 주면 첫 적재 시각으로 비교.
+   */
+  const firstSource = [...sources].sort(
+    (a, b) =>
+      (a.postedAt ?? a.firstSeenAt).localeCompare(
+        b.postedAt ?? b.firstSeenAt,
+      ),
+  )[0];
+
   return {
     key,
     merged: sources.length >= 2,
@@ -336,6 +362,7 @@ function buildItem(key: string, members: Member[]): ItemView {
     },
     postedAt: postedTimes[0] ?? null,
     collectedAt: sources[0].collectedAt,
+    firstSource,
     sources,
   };
 }
@@ -368,6 +395,30 @@ function hotScore(item: ItemView): number {
   return rec * 100_000_000 + views;
 }
 
+/*
+ * 가격 정렬용 대략 환율 (원화 환산 기준).
+ * 2026-08-27 기준치로 고정 — 표시가 아니라 정렬 전용이라
+ * 소수점 정밀도는 필요 없고, 시세 변동 시 이 값만 갱신한다.
+ * (출처: open.er-api.com, USD 1384.6 / JPY 8.70 / CNY 205.5 /
+ * EUR 1614.1)
+ */
+const FX_TO_KRW: Record<string, number> = {
+  KRW: 1,
+  USD: 1385,
+  JPY: 8.7,
+  CNY: 205,
+  EUR: 1615,
+};
+
+/** 아이템 대표 가격의 원화 환산값. 가격 없으면 무한대(정렬 맨 뒤). */
+function priceKrwOf(item: ItemView): number {
+  if (item.price === null) return Number.POSITIVE_INFINITY;
+
+  const rate = FX_TO_KRW[item.currency] ?? 1;
+
+  return item.price * rate;
+}
+
 /**
  * 아이템 단위 피드를 만든다. 필터/정렬은 여기서 적용한다.
  */
@@ -385,7 +436,8 @@ export function getDealFeed(
       .prepare(
         `SELECT id AS rowid, community, post_id, url, title, posted_at,
                 status, views, recommendations, comments,
-                affiliate_enabled, affiliate_raw_url, last_seen_at
+                affiliate_enabled, affiliate_raw_url,
+                first_seen_at, last_seen_at
          FROM posts
          WHERE EXISTS (SELECT 1 FROM deals d WHERE d.post_rowid = posts.id)
          ORDER BY CASE status WHEN 'ended' THEN 1 ELSE 0 END,
@@ -422,6 +474,18 @@ export function getDealFeed(
     for (const deal of dealRows) {
       const post = postByRowid.get(deal.post_rowid);
       if (!post) continue;
+
+      /* 무형·비핫딜 2차 방어 (1차는 인제스트 — 기존 잔여분 거르기). */
+      if (
+        checkExclusion({
+          community: post.community,
+          category: deal.category,
+          title: post.title,
+          price: deal.deal_price,
+        }).excluded
+      ) {
+        continue;
+      }
 
       const member: Member = { post, deal };
       const urlKey = deal.product_url
@@ -466,9 +530,9 @@ export function getDealFeed(
         const diff = hotScore(b) - hotScore(a);
         if (diff !== 0) return diff;
       } else if (sort === "price") {
-        const pa = a.price ?? Number.POSITIVE_INFINITY;
-        const pb = b.price ?? Number.POSITIVE_INFINITY;
-        if (pa !== pb) return pa - pb;
+        /* 원화 환산 기준 오름차순. 가격 없는 아이템은 맨 뒤. */
+        const diff = priceKrwOf(a) - priceKrwOf(b);
+        if (diff !== 0) return diff;
       }
 
       return (

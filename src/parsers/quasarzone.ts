@@ -178,16 +178,39 @@ export function parseQuasarzoneHtml(
   if (form !== null) {
     const link = form.link;
 
+    /*
+     * 퀘이사존 내부 게시판 링크(규정 글의 예시 링크, 다른 글·목록
+     * 검색 링크 등)는 구매 링크가 아니므로 링크 없음으로 본다.
+     */
+    const resolvedUrl =
+      link?.resolved && !isQuasarzoneInternalUrl(link.resolved)
+        ? link.resolved
+        : null;
+
+    /*
+     * 소수점 KRW 교정: 원화는 소수 단위가 없으므로 "￦ 6.82"는
+     * 작성자가 외화 금액을 통화 기본값(KRW)으로 넣은 흔적이다.
+     * 제목·본문·스토어 증거로 통화를 고치고, 증거가 없으면 유지.
+     */
+    const priceValue = form.price?.value ?? null;
+    const currency = correctDecimalKrwCurrency(
+      priceValue,
+      form.price?.currency ?? null,
+      form.store,
+      title,
+      bodyText,
+    );
+
     products.push({
       name: productNameFromTitle(title),
-      price: form.price?.value ?? null,
-      currency: form.price?.currency ?? null,
+      price: priceValue,
+      currency,
       priceText: form.price?.text ?? null,
       shipping: form.shipping?.value ?? null,
       shippingText: form.shipping?.text ?? null,
       store: form.store ?? storeTagFromTitle(title),
-      url: link?.resolved ?? null,
-      urlType: detectUrlType(link?.resolved ?? null, link?.rawUrl ?? null),
+      url: resolvedUrl,
+      urlType: detectUrlType(resolvedUrl, link?.rawUrl ?? null),
       rawUrl: link?.rawUrl ?? null,
     });
   }
@@ -535,6 +558,44 @@ function parsePriceCell(text: string): {
   }
 
   return { value, currency };
+}
+
+/** 퀘이사존 내부 게시판 URL이면 상품 링크가 아니다. */
+function isQuasarzoneInternalUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?quasarzone\.com\/bbs\//i.test(url);
+}
+
+/**
+ * 소수점 KRW 금액의 통화 교정.
+ *
+ * 원화 표기에 소수점이 붙으면(예: "￦ 6.82") 작성자가 외화 금액을
+ * 통화 선택 기본값인 KRW로 제출한 것이다 — 원화에는 소수 단위가
+ * 없다. 제목·본문의 통화 언급을 1순위 증거로, 스토어를 2순위
+ * 증거로 통화를 바로잡고, 증거가 없으면 원문을 보존한다
+ * (추측 교정 금지).
+ */
+function correctDecimalKrwCurrency(
+  price: number | null,
+  currency: QuasarzoneProduct["currency"],
+  store: string | null,
+  title: string,
+  bodyText: string,
+): QuasarzoneProduct["currency"] {
+  if (currency !== "KRW" || price === null || Number.isInteger(price)) {
+    return currency;
+  }
+
+  const evidence = `${title}\n${bodyText}`;
+
+  if (/달러|USD|\$\s?\d/i.test(evidence)) return "USD";
+  if (/위안|元|CNY/i.test(evidence)) return "CNY";
+  if (/¥|JPY|엔화/.test(evidence)) return "JPY";
+  if (/€|EUR|유로/.test(evidence)) return "EUR";
+
+  /* 알리익스프레스 국제 리스팅 기준 통화는 USD. */
+  if (store && /알리/.test(store)) return "USD";
+
+  return currency;
 }
 
 function parseShippingCell(text: string): number | null {

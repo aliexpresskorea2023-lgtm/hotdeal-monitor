@@ -339,8 +339,23 @@ a {
   white-space: nowrap;
 }
 
-.row-time {
+.row-original {
   margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.row-original:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.row-time {
   color: #999;
   white-space: nowrap;
 }
@@ -401,7 +416,7 @@ a {
     display: none;
   }
 
-  .row-time {
+  .row-original {
     margin-left: 0;
   }
 }
