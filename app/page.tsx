@@ -1,3 +1,4 @@
+import { Eye, MessageCircle } from "lucide-react";
 import { getDealFeed, type ItemView } from "@/src/db/queries";
 import {
   CATEGORIES,
@@ -6,180 +7,119 @@ import {
   STORE_FILTERS,
   type NormCategory,
 } from "@/src/db/taxonomy";
+import { firstParam, hrefFor } from "@/src/lib/query";
+import {
+  formatNumber,
+  formatPrice,
+  formatTime,
+  sourceLabel,
+  statusLabel,
+  timeAgo,
+} from "@/src/lib/format";
 
 /*
  * 데이터 소스: data/hotdeal.db (수집 파이프라인 적재분).
  * 매 요청마다 DB에서 새로 읽는다 — 2시간 주기 수집 결과가
  * 빌드/재시작 없이 바로 반영되도록 정적 생성은 끄고 간다.
  *
- * 표시 단위: 아이템 카드(리스트 로우).
- * 같은 구매 URL의 딜은 커뮤니티 무관 1로우로 병합되고,
- * 로우 안에 출처 커뮤니티 링크가 붙는다.
+ * v1.0 레이아웃(2026-08-27): 사이드바 셸 + 스토어 로고 타일 로우.
+ * 상품 썸네일은 수집하지 않으므로(결제/상품페이지 캡처본뿐)
+ * 타일은 스토어 로고로 대체한다.
  *
  * 필터/정렬은 URL 쿼리스트링 기반(서버 컴포넌트, 클라이언트 JS 없음):
- *   ?cat=생활/식품&store=쿠팡&status=active&sort=hot
- * 디자인은 라이트 모드 기준 — 다크 모드 토글은 추후 과제.
+ *   /?cat=생활/식품&store=쿠팡&status=active&sort=hot&page=2
+ * 기존 필터 체계(상태/정렬 + 카테고리 + 스토어 로고 칩)는 유지한다.
  */
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "HOTDEAL MONITOR",
+  title: "핫딜 모음",
 };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function first(
-  value: string | string[] | undefined,
-): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
+const PER_PAGE = 20;
+
+function storeLogo(storeNorm: string | null): string {
+  if (storeNorm && storeNorm in STORE_FILTER_LOGOS) {
+    return STORE_FILTER_LOGOS[storeNorm];
+  }
+  return STORE_FILTER_LOGOS[OTHER_STORE_FILTER];
 }
 
-function formatNumber(value: number | null) {
-  if (value === null) return "-";
-  return new Intl.NumberFormat("ko-KR").format(value);
-}
+function statSums(item: ItemView) {
+  let views = 0;
+  let comments = 0;
 
-function formatTime(dateString: string) {
-  const date = new Date(dateString);
-
-  return date.toLocaleString("ko-KR", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function timeAgo(dateString: string) {
-  const diffMs = Date.now() - new Date(dateString).getTime();
-  const minutes = Math.floor(diffMs / 60_000);
-
-  if (minutes < 1) return "방금 전";
-  if (minutes < 60) return `${minutes}분 전`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-
-  return `${Math.floor(hours / 24)}일 전`;
-}
-
-function sourceLabel(source: string) {
-  const labels: Record<string, string> = {
-    fmkorea: "펨코",
-    ppomppu: "뽐뿌",
-    arca: "아카라이브",
-    quasarzone: "퀘이사존",
-    mlbpark: "MLB파크",
-    theqoo: "더쿠",
-    slrclub: "SLR클럽",
-    ruliweb: "루리웹",
-  };
-
-  return labels[source] ?? source;
-}
-
-/** 임시 정책: 상태 모름은 진행중으로 노출. 종료 확인 건만 종료. */
-function statusLabel(status: string) {
-  if (status === "ended") return "종료";
-  return "진행중";
-}
-
-function formatPrice(
-  price: number | null,
-  currency: string,
-  priceText: string,
-) {
-  if (price === null) return "가격 확인 필요";
-
-  if (currency === "USD") return `$${price.toFixed(2)}`;
-  if (currency === "KRW") return `${formatNumber(price)}원`;
-
-  // CNY 등 기타 통화는 파서가 남긴 원문 표기를 그대로 쓴다.
-  return priceText;
-}
-
-function recSum(item: ItemView): number {
-  return item.sources.reduce(
-    (sum, s) => sum + (s.stats.recommendations ?? 0),
-    0,
-  );
-}
-
-function hrefFor(
-  current: Record<string, string>,
-  patch: Record<string, string | null>,
-) {
-  const next = new URLSearchParams();
-
-  for (const [key, value] of Object.entries({ ...current, ...patch })) {
-    if (value) next.set(key, value);
+  for (const source of item.sources) {
+    views += source.stats.views ?? 0;
+    comments += source.stats.comments ?? 0;
   }
 
-  const qs = next.toString();
+  return { views, comments };
+}
 
-  return qs ? `/?${qs}` : "/";
+function pageList(total: number, current: number): (number | "…")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const picked = new Set(
+    [1, 2, current - 1, current, current + 1, total - 1, total].filter(
+      (p) => p >= 1 && p <= total,
+    ),
+  );
+  const sorted = [...picked].sort((a, b) => a - b);
+
+  const out: (number | "…")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
 }
 
 function DealRow({ item }: { item: ItemView }) {
-  const recommendations = recSum(item);
+  const { views, comments } = statSums(item);
+  const logo = storeLogo(item.storeNorm);
 
   return (
-    <article className="deal-row">
-      <div className="row-line1">
-        <span
-          className={
-            item.status === "ended" ? "row-status ended" : "row-status"
-          }
-        >
-          {statusLabel(item.status)}
-        </span>
+    <article
+      className={item.status === "ended" ? "deal-row ended" : "deal-row"}
+    >
+      <div className="thumb">
+        <img src={logo} alt={item.storeNorm} />
+      </div>
+
+      <div className="row-grow">
+        <div className="store-line">
+          <img src={logo} alt="" />
+          {item.storeNorm}
+        </div>
 
         <a
           className="row-title"
-          href={item.url ?? item.firstSource.sourceUrl}
+          href={item.firstSource.sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
         >
           {item.name ?? item.firstSource.title}
         </a>
 
-        <span className="row-cat">{item.categoryNorm}</span>
-      </div>
-
-      <div className="row-line2">
-        <span className="row-store">{item.storeNorm}</span>
-
-        <span className="row-price">
-          {formatPrice(item.price, item.currency, item.priceText)}
-        </span>
-
-        <span className="row-ship">
-          {item.shippingText ?? "배송비 확인 필요"}
-        </span>
-
-        {recommendations > 0 && (
-          <span className="row-rec">★ {formatNumber(recommendations)}</span>
-        )}
-
-        <a
-          className="row-original"
-          href={item.firstSource.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          원문 보기
-        </a>
-
-        <span className="row-time">
-          {timeAgo(item.postedAt ?? item.collectedAt)}
-        </span>
-
-        <span className="row-sources">
+        <div className="tagrow">
+          <span className={item.status === "ended" ? "tag ended" : "tag live"}>
+            {statusLabel(item.status)}
+          </span>
+          <span className="tag">{item.categoryNorm}</span>
+          {item.shippingText && <span className="tag">{item.shippingText}</span>}
           {item.sources.map((source) => (
             <a
               key={source.id}
+              className="tag src"
               href={source.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -188,7 +128,52 @@ function DealRow({ item }: { item: ItemView }) {
               {sourceLabel(source.source)}
             </a>
           ))}
+        </div>
+      </div>
+
+      <div className="rail">
+        <span className="price">
+          {formatPrice(item.price, item.currency, item.priceText)}
         </span>
+        <span className="price-sub">
+          {item.shippingText ?? "배송비 확인 필요"}
+        </span>
+        <div className="stats">
+          <span>
+            <Eye size={13} />
+            {formatNumber(views)}
+          </span>
+          <span>
+            <MessageCircle size={13} />
+            {formatNumber(comments)}
+          </span>
+          <span>{timeAgo(item.postedAt ?? item.collectedAt)}</span>
+        </div>
+      </div>
+
+      <div className="row-actions">
+        <a
+          className="btn primary"
+          href={item.firstSource.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          원문링크
+        </a>
+        {item.url ? (
+          <a
+            className="btn ghost"
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            구매하기
+          </a>
+        ) : (
+          <span className="btn ghost disabled" aria-disabled="true">
+            구매하기
+          </span>
+        )}
       </div>
     </article>
   );
@@ -197,16 +182,18 @@ function DealRow({ item }: { item: ItemView }) {
 export default async function Home({ searchParams }: PageProps) {
   const raw = await searchParams;
 
-  const rawCat = first(raw.cat);
-  const rawStore = first(raw.store);
-  const rawStatus = first(raw.status);
-  const rawSort = first(raw.sort);
+  const rawCat = firstParam(raw.cat);
+  const rawStore = firstParam(raw.store);
+  const rawStatus = firstParam(raw.status);
+  const rawSort = firstParam(raw.sort);
+  const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
 
-  /* 전체 아이템 수(요약 영역)용 전체 피드. 스토어 칩은 고정 목록. */
+  /* 전체 규모 표시용 전체 피드. 스토어 칩은 고정 목록. */
   const all = getDealFeed();
 
-  const category: NormCategory | null = (CATEGORIES as readonly string[])
-    .includes(rawCat ?? "")
+  const category: NormCategory | null = (CATEGORIES as readonly string[]).includes(
+    rawCat ?? "",
+  )
     ? (rawCat as NormCategory)
     : null;
   const store =
@@ -217,8 +204,7 @@ export default async function Home({ searchParams }: PageProps) {
       : null;
   const status =
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
-  const sort =
-    rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
+  const sort = rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
 
   const { items, hasData, lastIngestedAt } = getDealFeed({
     category,
@@ -233,99 +219,61 @@ export default async function Home({ searchParams }: PageProps) {
   if (status !== "all") current.status = status;
   if (sort !== "latest") current.sort = sort;
 
-  const activeCount = items.filter(
-    (item) => item.status !== "ended",
-  ).length;
+  const totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
+  const page = Math.min(Math.max(1, rawPage), totalPages);
+  const visible = items.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
+  const activeCount = items.filter((item) => item.status !== "ended").length;
 
   return (
-    <main className="page">
-      {/* Header */}
-      <header className="header">
+    <>
+      <div className="page-head">
         <div>
-          <div className="eyebrow">SHOPPING INTELLIGENCE</div>
-
-          <h1>HOTDEAL MONITOR</h1>
-
-          <p>다양한 커뮤니티의 특가 정보를 한곳에서 확인하세요.</p>
+          <h1>핫딜 모음</h1>
+          <p>
+            {hasData && lastIngestedAt
+              ? `마지막 적재 ${formatTime(lastIngestedAt)} · 2시간 주기 수집`
+              : "수집 이력 없음"}
+          </p>
         </div>
+        <span className="head-count">
+          {items.length}개 아이템 · 진행중 {activeCount}
+        </span>
+      </div>
 
-        <div className="header-status">
-          <span className="status-dot" />
-          {hasData
-            ? `LIVE DATA${lastIngestedAt ? ` · 적재 ${formatTime(lastIngestedAt)}` : ""}`
-            : "수집 이력 없음"}
-        </div>
-      </header>
-
-      {/* Toolbar — 퀘이사존형: 상태/카테고리 탭 + 쇼핑 카테고리 칩 */}
+      {/* 필터 — 기존 체계 유지: 상태/정렬 + 카테고리 + 스토어 로고 칩 */}
       <section className="toolbar">
-        <div className="tab-row">
-          <div className="platform-tabs">
-            <a
-              className={status === "all" ? "active" : ""}
-              href={hrefFor(current, { status: null })}
-            >
-              전체
-            </a>
-            <a
-              className={status === "active" ? "active" : ""}
-              href={hrefFor(current, { status: "active" })}
-            >
-              진행중
-            </a>
-            <a
-              className={status === "ended" ? "active" : ""}
-              href={hrefFor(current, { status: "ended" })}
-            >
-              종료
-            </a>
-          </div>
-
-          <div className="platform-tabs">
-            <a
-              className={sort === "latest" ? "active" : ""}
-              href={hrefFor(current, { sort: null })}
-            >
-              최신순
-            </a>
-            <a
-              className={sort === "hot" ? "active" : ""}
-              href={hrefFor(current, { sort: "hot" })}
-            >
-              인기순
-            </a>
-            <a
-              className={sort === "price" ? "active" : ""}
-              href={hrefFor(current, { sort: "price" })}
-            >
-              가격순
-            </a>
-          </div>
+        <div className="frow">
+          <span className="flabel">상태</span>
+          <a className={status === "all" ? "fchip active" : "fchip"} href={hrefFor("/", current, { status: null })}>전체</a>
+          <a className={status === "active" ? "fchip active" : "fchip"} href={hrefFor("/", current, { status: "active" })}>진행중</a>
+          <a className={status === "ended" ? "fchip active" : "fchip"} href={hrefFor("/", current, { status: "ended" })}>종료</a>
+          <span style={{ width: 14 }} />
+          <span className="flabel">정렬</span>
+          <a className={sort === "latest" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: null })}>최신순</a>
+          <a className={sort === "hot" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: "hot" })}>인기순</a>
+          <a className={sort === "price" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: "price" })}>가격순</a>
         </div>
 
-        <div className="platform-tabs cat-tabs">
-          <a
-            className={category === null ? "active" : ""}
-            href={hrefFor(current, { cat: null })}
-          >
-            전 카테고리
-          </a>
+        <div className="frow">
+          <span className="flabel">카테고리</span>
+          <a className={category === null ? "fchip active" : "fchip"} href={hrefFor("/", current, { cat: null })}>전체</a>
           {CATEGORIES.map((cat) => (
             <a
               key={cat}
-              className={category === cat ? "active" : ""}
-              href={hrefFor(current, { cat })}
+              className={category === cat ? "fchip active" : "fchip"}
+              href={hrefFor("/", current, { cat })}
             >
               {cat}
             </a>
           ))}
         </div>
 
-        <div className="chip-row">
-          <span className="chip-label">쇼핑</span>
+        <div className="frow">
+          <span className="flabel">쇼핑몰</span>
           <a
-            className={store === null ? "chip active" : "chip"}
-            href={hrefFor(current, { store: null })}
+            className={store === null ? "fchip logo active" : "fchip logo"}
+            href={hrefFor("/", current, { store: null })}
             title="전체"
           >
             <img src={STORE_FILTER_LOGOS["전체"]} alt="전체" />
@@ -333,8 +281,8 @@ export default async function Home({ searchParams }: PageProps) {
           {[...STORE_FILTERS, OTHER_STORE_FILTER].map((name) => (
             <a
               key={name}
-              className={store === name ? "chip active" : "chip"}
-              href={hrefFor(current, { store: name })}
+              className={store === name ? "fchip logo active" : "fchip logo"}
+              href={hrefFor("/", current, { store: name })}
               title={name}
             >
               <img src={STORE_FILTER_LOGOS[name]} alt={name} />
@@ -343,41 +291,42 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
       </section>
 
-      {/* Summary */}
-      <section className="summary">
-        <div>
-          <strong>{items.length}</strong>
-          <span>개의 아이템</span>
-        </div>
-
-        <div>
-          <strong>{activeCount}</strong>
-          <span>진행중</span>
-        </div>
-
-        <div>
-          <strong>{all.items.length}</strong>
-          <span>전체 아이템</span>
-        </div>
-      </section>
-
-      {/* Deal Rows */}
       {hasData ? (
         <section className="deal-list">
-          {items.map((item) => (
+          {visible.map((item) => (
             <DealRow key={item.key} item={item} />
           ))}
         </section>
       ) : (
-        <section className="summary">
-          <div>
-            <span>
-              아직 표시할 데이터가 없습니다. 수집 파이프라인
-              (collector/run-pipeline.sh)을 실행해 주세요.
-            </span>
-          </div>
-        </section>
+        <div className="empty">
+          아직 표시할 데이터가 없습니다. 수집 파이프라인
+          (collector/run-pipeline.sh)을 실행해 주세요.
+        </div>
       )}
-    </main>
+
+      {totalPages > 1 && (
+        <nav className="pager">
+          {page > 1 && (
+            <a href={hrefFor("/", current, { page: page === 2 ? null : String(page - 1) })}>‹</a>
+          )}
+          {pageList(totalPages, page).map((p, i) =>
+            p === "…" ? (
+              <span key={`e${i}`}>…</span>
+            ) : (
+              <a
+                key={p}
+                className={p === page ? "on" : ""}
+                href={hrefFor("/", current, { page: p === 1 ? null : String(p) })}
+              >
+                {p}
+              </a>
+            ),
+          )}
+          {page < totalPages && (
+            <a href={hrefFor("/", current, { page: String(page + 1) })}>›</a>
+          )}
+        </nav>
+      )}
+    </>
   );
 }

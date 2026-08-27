@@ -204,3 +204,21 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 - 이후 국내 서비스 무료 플랜 대안 검토(국내 IP가 크롤러/WAF에 유리).
 - 수집 데이터는 OSINT 정제물이라 외부 호스팅에 보안 리스크 없음.
 - 단, 수집 워커는 Vercel 서버리스에 올리지 않는다 — 실측(2026-08-26)으로 fmkorea 430(IP 평판 WAF)·ruliweb TCP 차단 확인. 3/5만 수집 가능해 최대 출처가 빠지므로 부적합(상세: "주기 수집 스케줄링" 섹션).
+
+### v1.1 데이터 품질 수정 + 리브랜드 (2026-08-27)
+
+**리브랜드**: 앱명 "사우론의 눈 / EYE OF SAURON". 로고 `public/sauron-eye.png`(사이드바 `img.brand-logo`), 파비콘은 `app/icon.png`(App Router 파일 컨벤션 — 기존 `app/favicon.ico`는 폐기·Trash). 메타데이터 타이틀 템플릿 동일 파일에서 갱신.
+
+**액션 버튼**: 핫딜 모음 로우 우측 `.row-actions` — 원문링크(`.btn.primary`, 테마 블루 `var(--primary)`)= 첫 출처 게시글 URL, 구매하기(`.btn.ghost` 흰색)= 구매 URL(없으면 `.disabled` 스팬). 순위 테이블은 맨 오른쪽 8번째 그리드 컬럼에 원문링크(`.btn.primary.sm`). 제목 링크는 원문 게시글로 통일(구매 링크는 버튼과 분리).
+
+**순위 필터**: /ranking에도 카테고리+쇼핑몰 칩(쿼리스트링, 홈과 동일 `hrefFor`). 화면 라벨 "스토어" → "쇼핑몰" 전면 변경.
+
+**무형 제외 보강** (`exclusion.ts`): ① `SOFTWARE_TITLE` 신설(윈도우 1[01]·office/microsoft 365·한글 20xx·adobe·라이센스·정품 키·게임 패스 — "정품"/"윈도우" 단독은 실물 수식어라 금지). ② `TRAVEL_TITLE` 보강: 항공사명 단독(이스타항공 등), 하이픈 경로 단독(인천-오사카 — 날짜 선후 무관), 월일 범위(9월8일~10일). ③ `PROMO_TITLE`에 다운로드 쿠폰/쿠폰 정리 추가. 실측 4건(이스타항공·인천-도쿄·윈도우11 홈·다운로드 쿠폰 정리) — `purge-excluded.ts` 재실행으로 삭제, 오탐 0.
+
+**카테고리 재분류** (`taxonomy.ts`): 네이티브 맵 누락 보완(ruliweb 휴대폰→노트북/모바일, ppomppu 패션/뷰티·의류→패션/뷰티). `normalizeCategory(community, raw, title?)`로 시그니처 확장 — 통합 분류가 "기타"일 때만 `TITLE_CATEGORY_RULES`(보조배터리/충전기→노트북/모바일, 샴푸/바디워시/토너→패션/뷰티, 세제/치약/김치/생수→생활/식품)로 제목 기반 재분류. 호출부 3곳(queries·exclusion·history) 전부 title 전달. 기타 탭 37→10(남은 것은 취미/장난감/모음글).
+
+**룰리웹 맨 가격** (`ruliweb.ts` `consumeBareWon`): 괄호/슬래시 밖 "N원" 토(쉼표 자리구분 또는 4자리 이상, 뒤에 적립/쿠 붙으면 포인트 문구라 스킵)을 가격으로 채택. 예: "앤커 프라임 보조배터리 + 충전베이스 151,829원".
+
+**펨코 종료 마커** (`fmkorea.ts` `extractStatus`): `div[class*="hotdeal_var"]`(접미사 세션가변) 텍스트에 "종료" 있으면 즉시 ended — 마커가 `<article>` 밖 `.rd_body` 직하에 있어 본문 스캔으로는 못 잡던 것.
+
+**스냅샷 리페어** (`scripts/repair-snapshots.ts`, `--dry-run`): data/crawls 전 run을 시간순 재파싱 — ① status ended 승격만(강등 금지) ② 가격은 저장 딜과 seq 개수 일치 시 null→파싱값 보강 + observation 기록. 실측: 승격 15건·가격 5건. 인제스트와 동일 제외 필터로 seq를 맞춘 것이 핵심(개수 불일치 글은 스킵).

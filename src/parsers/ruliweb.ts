@@ -334,6 +334,7 @@ function parseTitle(title: string): TitleInfo {
   working = consumeParenGroups(working, info);
   working = consumeSlashSegments(working, info);
   working = consumeTrailingMan(working, info);
+  working = consumeBareWon(working, info);
 
   const name = working
     .trim()
@@ -559,6 +560,43 @@ function consumeTrailingMan(text: string, info: TitleInfo): string {
   info.priceText = `${match[2]}만`;
 
   return match[1];
+}
+
+/**
+ * 괄호·슬래시 밖의 맨 "N원" 표기를 소비한다.
+ * 예: "앤커 프라임 보조배터리 + 충전베이스 151,829원"
+ * "원" 단위는 강한 가격 신호다 — 모델명 숫자는 단위를 안 붙인다.
+ * 다만 "44원"/"5원" 같은 소액 포인트 표기는 쉴드하도록
+ * 쉼표 자리구분 형태거나 4자리 이상인 숫자만 채택하고,
+ * 뒤에 적립/쿠폰이 붙으면 포인트 문구라 보고 넘긴다.
+ */
+function consumeBareWon(text: string, info: TitleInfo): string {
+  if (info.price !== null) {
+    return text;
+  }
+
+  const match = text.match(
+    /(\d{1,3}(?:,\d{3})+|\d{4,})\s*원(?!\s*적립|쿠폰)/,
+  );
+
+  if (!match || match.index === undefined) {
+    return text;
+  }
+
+  const value = Number(match[1].replace(/,/g, ""));
+
+  if (Number.isNaN(value)) {
+    return text;
+  }
+
+  info.price = value;
+  info.currency = "KRW";
+  info.priceText = `${match[1]}원`;
+
+  return (
+    text.slice(0, match.index) +
+    text.slice(match.index + match[0].length)
+  );
 }
 
 /**

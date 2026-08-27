@@ -343,6 +343,7 @@ function buildItem(key: string, members: Member[]): ItemView {
     categoryNorm: normalizeCategory(
       catMember?.post.community ?? "",
       catMember?.deal.category ?? null,
+      catMember?.post.title ?? null,
     ),
     storeNorm: normalizeStore(store),
     status,
@@ -385,7 +386,7 @@ export interface FeedOptions {
 }
 
 /** 출처 stats 합산 인기 점수 — 추천이 조회수보다 상위 가중치. */
-function hotScore(item: ItemView): number {
+export function hotScore(item: ItemView): number {
   let rec = 0;
   let views = 0;
 

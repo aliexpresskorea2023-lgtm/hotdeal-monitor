@@ -1184,6 +1184,20 @@ function extractStatus(
   title: string,
 ): FmkoreaDeal["status"] {
   /*
+   * 사이트 네이티브 종료 마커. 본문<article> 밖(.rd_body 직하)에
+   * 나와서 본문 텍스트 스캔으로는 못 잡는다. 클래스 접미사
+   * (var8Y 등)는 세션마다 바뀌므로 접두사로 매치한다.
+   */
+  const marker = $('div[class*="hotdeal_var"]')
+    .map((_, el) => $(el).text())
+    .get()
+    .join(" ");
+
+  if (/종료/.test(marker)) {
+    return "ended";
+  }
+
+  /*
    * 페이지 전체(사이드바의 다른 딜 제목, 댓글 등)를 스캔하면
    * 이 글과 무관한 텍스트에서 "종료" 같은 단어가 우연히
    * 매치될 수 있다. 제목 + 본문으로만 범위를 좁힌다.

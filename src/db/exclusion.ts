@@ -35,15 +35,32 @@ export const EXCLUDED_NORM_CATEGORIES: ReadonlySet<NormCategory> = new Set<NormC
  * 쓰지 않고, 홍보글에서만 관찰된 조합만 쓴다.
  */
 const PROMO_TITLE =
-  /소문내기|관심고객|출석|퀴즈|응모|종합 ?차트|적립 ?차트|쇼핑라이브|라이브 ?예고|방송 ?예정|오늘.{0,6}방송|멤버십 ?데이|게시판 규정|공지사항|필독|선착순 ?(쿠폰|멤버십|적립|이벤트)/;
+  /소문내기|관심고객|출석|퀴즈|응모|종합 ?차트|적립 ?차트|쇼핑라이브|라이브 ?예고|방송 ?예정|오늘.{0,6}방송|멤버십 ?데이|게시판 규정|공지사항|필독|선착순 ?(쿠폰|멤버십|적립|이벤트)|다운로드 ?쿠폰|쿠폰 ?정리/;
+
+/**
+ * 소프트웨어(단품 판매) 판정.
+ * 게임/SW 네이티브 카테고리가 없는 커뮤니티(arca "PC" 등)에서
+ * 소프트웨어가 실물 하드웨어 분류로 새어 들어오는 것을 잡는다.
+ * "정품" 단독은 CPU "멀티팩 정품" 같은 실물 수식어로 쓰이므로
+ * 금지하고, "정품 키"/"라이센스"처럼 소프트웨어 판매 신호만 쓴다.
+ * "윈도우" 단독도 금지 — 노트북 딜의 "윈도우11 포함"이 있으므로
+ * 버전 번호가 붙은 형태만 매치한다.
+ */
+const SOFTWARE_TITLE =
+  /윈도우 ?1[01]|windows ?1[01]|microsoft ?365|office ?365|한글 ?20\d{2}|adobe|photoshop|일러스트레이터|애프터 ?이펙트|라이센스|licence|license|정품 ?키|게임 ?패스|game ?pass|노턴|카스퍼스키|소프트웨어/i;
 
 /**
  * 항공권·여행·이용권류 판정.
  * "여행" 단독은 여행용품(캐리어 등) 실물을 잡으므로 쓰지 않는다.
- * 출발지-도착지+날짜 패턴("인천-도쿄 0903-0905")도 함께 쓴다.
+ * 실측 누수 케이스(2026-08-27)를 반영해 세 가지를 보강:
+ * - 항공사명 단독(이스타항공·제주항공 등) — 제목에 "항공권"이
+ *   없어도 항공사명은 무형 신호다.
+ * - 하이픈 경로 단독("인천-오사카") — 날짜가 없거나 제목 앞에
+ *   있어도("0903-0905 인천-도쿄") 경로 자체가 항공권 딜이다.
+ * - 월일 날짜 범위("9월8일~10일") — 기존 \d{3,4} 범위가 못 잡는다.
  */
 const TRAVEL_TITLE =
-  /항공권|왕복|편도|숙박권?|호텔 ?예약|렌터카|렌트카|이용권|입장권|(인천|부산|청주|제주|김포|김해|대구|무안|여수|원주|광주|서울)\s*[-~–]?\s*[가-힣A-Za-z]{2,12}\s+\d{3,4}\s*[-~–]\s*\d{3,4}/;
+  /항공권|왕복|편도|숙박권?|호텔 ?예약|렌터카|렌트카|이용권|입장권|이스타항공|제주항공|진에어|티웨이|에어서울|에어부산|에어프레미아|대한항공|아시아나|(인천|부산|청주|제주|김포|김해|대구|무안|여수|원주|광주|서울)\s*[-~–]\s*[가-힣A-Za-z]{2,12}|(인천|부산|청주|제주|김포|김해|대구|무안|여수|원주|광주|서울)\s*[-~–]?\s*[가-힣A-Za-z]{2,12}\s+\d{3,4}\s*[-~–]\s*\d{3,4}|\d{1,2}\s*월\s*\d{1,2}\s*일?\s*[-~–]\s*\d{1,2}\s*일?/;
 
 export interface ExclusionInput {
   /** 게시글 소속 커뮤니티 (네이티브 카테고리 매핑용) */
@@ -63,6 +80,7 @@ export interface ExclusionResult {
     | "category"
     | "zero-price"
     | "promo-title"
+    | "software-title"
     | "travel-title"
     | null;
   categoryNorm: NormCategory;
@@ -70,7 +88,11 @@ export interface ExclusionResult {
 
 /** 단일 딜 단위 제외 판정. */
 export function checkExclusion(input: ExclusionInput): ExclusionResult {
-  const categoryNorm = normalizeCategory(input.community, input.category);
+  const categoryNorm = normalizeCategory(
+    input.community,
+    input.category,
+    input.title,
+  );
 
   if (EXCLUDED_NORM_CATEGORIES.has(categoryNorm)) {
     return { excluded: true, reason: "category", categoryNorm };
@@ -82,6 +104,10 @@ export function checkExclusion(input: ExclusionInput): ExclusionResult {
 
   if (PROMO_TITLE.test(input.title)) {
     return { excluded: true, reason: "promo-title", categoryNorm };
+  }
+
+  if (SOFTWARE_TITLE.test(input.title)) {
+    return { excluded: true, reason: "software-title", categoryNorm };
   }
 
   if (TRAVEL_TITLE.test(input.title)) {

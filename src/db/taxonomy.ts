@@ -77,6 +77,9 @@ const CATEGORY_MAP: Record<string, Record<string, NormCategory>> = {
     "식품/건강": "생활/식품",
     기타: "기타",
     거래완료: "기타",
+    "패션/뷰티": "패션/뷰티",
+    의류: "패션/뷰티",
+    미용: "패션/뷰티",
   },
   quasarzone: {
     "PC/하드웨어": "PC/하드웨어",
@@ -96,17 +99,48 @@ const CATEGORY_MAP: Record<string, Record<string, NormCategory>> = {
     생활용품: "생활/식품",
     상품권: "상품권/쿠폰",
     "PC/가전": "PC/하드웨어",
+    휴대폰: "노트북/모바일",
     취미용품: "기타",
   },
 };
 
+/*
+ * 제목 기반 재분류 (2026-08-27).
+ * 네이티브 분류가 없어 "기타"로 떨어진 딜 중 제목에 명확한
+ * 상품 신호가 있으면 재분류한다. 실측 오분류 케이스로 규칙을
+ * 만들었다: 보조배터리가 기타로, 샴푸/바디워시가 기타로 가던
+ * 문제. "기타" 결론일 때만 적용하므로 네이티브 분류를 믿는
+ * 원칙은 유지된다. 순서 민감 — 첫 매치만 채택.
+ */
+const TITLE_CATEGORY_RULES: [RegExp, NormCategory][] = [
+  [
+    /보조배터리|충전기|충전베이스|케이블|이어폰|헤드폰|이어버즈|스마트워치|갤럭시 ?워치|아이패드|갤럭시 ?탭|태블릿|휴대폰|스마트폰|거치대|보호필름|강화유리/,
+    "노트북/모바일",
+  ],
+  [
+    /샴푸|바디워시|트리트먼트|로션|토너|세럼|앰플|미백|페이셜|클렌징|선스틱|선크림|향수|립스틱|립밤|파운데이션|쿠션|마스크팩|양말|속옷|런닝|티셔츠|후드|패딩|운동화|슬리퍼/,
+    "패션/뷰티",
+  ],
+  [
+    /세제|섬유유연제|물티슈|미용티슈|화장지|키친타월|치약|칫솔|가글|리스테린|방향제|탈취제|곰팡이|김치|국밥|탕|생수|커피|콜라|음료|주스|만두|핫도그|불고기|과자|라면|즉석밥|올리브/,
+    "생활/식품",
+  ],
+];
+
 export function normalizeCategory(
   community: string,
   raw: string | null,
+  title?: string | null,
 ): NormCategory {
-  if (!raw) return "기타";
+  const base = !raw ? "기타" : CATEGORY_MAP[community]?.[raw] ?? "기타";
 
-  return CATEGORY_MAP[community]?.[raw] ?? "기타";
+  if (base !== "기타" || !title) return base;
+
+  for (const [pattern, category] of TITLE_CATEGORY_RULES) {
+    if (pattern.test(title)) return category;
+  }
+
+  return base;
 }
 
 /**
@@ -141,7 +175,7 @@ export const OTHER_STORE_FILTER = "기타";
 export const STORE_FILTER_LOGOS: Record<string, string> = {
   전체: "/store-logos/all.png",
   알리익스프레스: "/store-logos/aliexpress.jpeg",
-  쿠팡: "/store-logos/coupang.jpeg",
+  쿠팡: "/store-logos/coupang.png",
   네이버: "/store-logos/naver.png",
   토스: "/store-logos/toss.png",
   "11번가": "/store-logos/11st.jpeg",
