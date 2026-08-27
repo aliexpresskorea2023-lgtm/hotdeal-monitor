@@ -134,3 +134,14 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
   deals_upserted INTEGER NOT NULL,
   observations_added INTEGER NOT NULL
 );
+
+-- 상품 썸네일 캐시 (2026-08-27).
+-- 상품 키 = src/db/queries.ts의 productKeyFromUrl 정규화 결과.
+-- 성공 시 image_url 채움, 실패 시 빈 문자열 + attempts 증가.
+-- attempts 3회면 포기 — 무한 재시도 방지.
+CREATE TABLE IF NOT EXISTS product_images (
+  product_key TEXT PRIMARY KEY,
+  image_url TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 1,
+  fetched_at TEXT NOT NULL
+);

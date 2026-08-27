@@ -50,6 +50,14 @@ const SOFTWARE_TITLE =
   /윈도우 ?1[01]|windows ?1[01]|microsoft ?365|office ?365|한글 ?20\d{2}|adobe|photoshop|일러스트레이터|애프터 ?이펙트|라이센스|licence|license|정품 ?키|게임 ?패스|game ?pass|노턴|카스퍼스키|소프트웨어/i;
 
 /**
+ * 렌탈(약정·월 과금) 딜 판정 — 사용자 확정(2026-08-27): 렌탈은
+ * 월별 요금 표기라 핫딜 가격 비교가 무의미하므로 무조건 제외.
+ * 실측 누수: 다나와×아정당 TV 렌탈 홍보글(뽐뿌 303702)에서
+ * 월 요금 파편이 딜 가격으로 적재된 사례.
+ */
+const RENTAL_TITLE = /렌탈|렌털/;
+
+/**
  * 항공권·여행·이용권류 판정.
  * "여행" 단독은 여행용품(캐리어 등) 실물을 잡으므로 쓰지 않는다.
  * 실측 누수 케이스(2026-08-27)를 반영해 세 가지를 보강:
@@ -81,6 +89,7 @@ export interface ExclusionResult {
     | "zero-price"
     | "promo-title"
     | "software-title"
+    | "rental-title"
     | "travel-title"
     | null;
   categoryNorm: NormCategory;
@@ -108,6 +117,10 @@ export function checkExclusion(input: ExclusionInput): ExclusionResult {
 
   if (SOFTWARE_TITLE.test(input.title)) {
     return { excluded: true, reason: "software-title", categoryNorm };
+  }
+
+  if (RENTAL_TITLE.test(input.title)) {
+    return { excluded: true, reason: "rental-title", categoryNorm };
   }
 
   if (TRAVEL_TITLE.test(input.title)) {

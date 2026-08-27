@@ -107,7 +107,7 @@ function DealRow({ item }: { item: ItemView }) {
           target="_blank"
           rel="noopener noreferrer"
         >
-          {item.name ?? item.firstSource.title}
+          {item.displayName ?? item.firstSource.title}
         </a>
 
         <div className="tagrow">
@@ -186,6 +186,7 @@ export default async function Home({ searchParams }: PageProps) {
   const rawStore = firstParam(raw.store);
   const rawStatus = firstParam(raw.status);
   const rawSort = firstParam(raw.sort);
+  const rawQ = firstParam(raw.q)?.trim() || null;
   const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
 
   /* 전체 규모 표시용 전체 피드. 스토어 칩은 고정 목록. */
@@ -211,6 +212,7 @@ export default async function Home({ searchParams }: PageProps) {
     store,
     status,
     sort,
+    q: rawQ,
   });
 
   const current: Record<string, string> = {};
@@ -218,6 +220,7 @@ export default async function Home({ searchParams }: PageProps) {
   if (store) current.store = store;
   if (status !== "all") current.status = status;
   if (sort !== "latest") current.sort = sort;
+  if (rawQ) current.q = rawQ;
 
   const totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
   const page = Math.min(Math.max(1, rawPage), totalPages);
@@ -241,8 +244,34 @@ export default async function Home({ searchParams }: PageProps) {
         </span>
       </div>
 
-      {/* 필터 — 기존 체계 유지: 상태/정렬 + 카테고리 + 스토어 로고 칩 */}
+      {/* 필터 — 기존 체계 유지: 검색 + 상태/정렬 + 카테고리 + 스토어 로고 칩 */}
       <section className="toolbar">
+        <form className="searchbar" action="/" method="get" role="search">
+          {category && <input type="hidden" name="cat" value={category} />}
+          {store && <input type="hidden" name="store" value={store} />}
+          {status !== "all" && (
+            <input type="hidden" name="status" value={status} />
+          )}
+          {sort !== "latest" && <input type="hidden" name="sort" value={sort} />}
+          <input
+            type="search"
+            name="q"
+            defaultValue={rawQ ?? ""}
+            placeholder="상품명 검색 (예: 갤럭시, 샴푸, 멜론)"
+            aria-label="상품명 검색"
+          />
+          <button type="submit">검색</button>
+          {rawQ && (
+            <a
+              className="search-clear"
+              href={hrefFor("/", current, { q: null })}
+              title="검색 해제"
+            >
+              ✕
+            </a>
+          )}
+        </form>
+
         <div className="frow">
           <span className="flabel">상태</span>
           <a className={status === "all" ? "fchip active" : "fchip"} href={hrefFor("/", current, { status: null })}>전체</a>

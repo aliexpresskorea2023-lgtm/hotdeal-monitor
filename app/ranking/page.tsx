@@ -171,7 +171,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
                 <span className={badgeClass}>{rank}</span>
 
                 <div className="thumb sm">
-                  <img src={logo} alt={item.storeNorm} />
+                  <img src={item.imageUrl ?? logo} alt={item.storeNorm} />
                 </div>
 
                 <div className="row-grow">
@@ -186,7 +186,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {item.name ?? item.firstSource.title}
+                    {item.displayName ?? item.firstSource.title}
                   </a>
                 </div>
 

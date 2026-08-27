@@ -265,6 +265,49 @@ a {
   margin: 20px 0 18px;
 }
 
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchbar input[type="search"] {
+  flex: 1;
+  max-width: 420px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.searchbar input[type="search"]:focus {
+  border-color: var(--primary);
+}
+
+.searchbar button {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 18px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.search-clear {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  padding: 6px;
+}
+
+.search-clear:hover {
+  color: var(--foreground);
+}
+
 .frow {
   display: flex;
   align-items: center;

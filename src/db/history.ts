@@ -1,6 +1,7 @@
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
 import { normalizeCategory, normalizeStore, type NormCategory } from "./taxonomy";
+import { cleanDisplayName } from "../lib/name";
 import type { PostStatus } from "./queries";
 
 /*
@@ -224,14 +225,19 @@ export function getPriceHistory(
           ? ((currentPrice - firstPrice) / firstPrice) * 100
           : null;
 
+      const storeNorm = normalizeStore(deal.store);
+
       items.push({
         dealId: deal.deal_id,
-        name: deal.product_name ?? deal.title,
+        name: cleanDisplayName(
+          deal.product_name ?? deal.title,
+          storeNorm,
+        ) ?? deal.title,
         community: deal.community,
         postTitle: deal.title,
         sourceUrl: deal.post_url,
         url: deal.product_url,
-        storeNorm: normalizeStore(deal.store),
+        storeNorm,
         categoryNorm: normalizeCategory(
           deal.community,
           deal.category,

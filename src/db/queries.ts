@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
+import { cleanDisplayName } from "../lib/name";
 import {
   isOtherStore,
   normalizeCategory,
@@ -77,7 +78,14 @@ export interface ItemView {
   key: string;
   /** 출처 2개 이상으로 병합된 카드인지 */
   merged: boolean;
+  /** 대표 상품명 (원본) */
   name: string | null;
+  /**
+   * 표시용 정제 이름 (src/lib/name.ts cleanDisplayName).
+   * 프로모션 수식어·스토어 괄호·카드사 나열 등을 보수적으로 제거.
+   * 정제 결과가 비면 원본으로 폴백.
+   */
+  displayName: string | null;
   /** 출처들 중 대표 통화 기준 최저가 */
   price: number | null;
   currency: string;
@@ -110,6 +118,11 @@ export interface ItemView {
   firstSource: ItemSourceView;
   /** 최신 확인 순으로 정렬된 출처 목록 */
   sources: ItemSourceView[];
+  /**
+   * 상품 썸네일 (product_images 캐시에서 조회).
+   * 없으면 표시 계층에서 스토어 로고로 폴백.
+   */
+  imageUrl: string | null;
 }
 
 export interface FeedResult {
@@ -187,7 +200,7 @@ function parseJsonArray(raw: string | null): string[] {
 const TRACKING_PARAM =
   /^(utm_[a-z]+|fbclid|gclid|igshid?|si|nclid|ref|ref_src|spm|scm)$/i;
 
-function productKeyFromUrl(raw: string): string | null {
+export function productKeyFromUrl(raw: string): string | null {
   try {
     const parsed = new URL(raw);
 
@@ -309,6 +322,7 @@ function buildItem(key: string, members: Member[]): ItemView {
 
   const linked = sources.find((s) => s.url !== null) ?? null;
   const store = sources.find((s) => s.store !== null)?.store ?? null;
+  const storeNorm = normalizeStore(store);
   const catMember = members.find((m) => m.deal.category) ?? null;
 
   const postedTimes = sources
@@ -331,6 +345,7 @@ function buildItem(key: string, members: Member[]): ItemView {
     key,
     merged: sources.length >= 2,
     name: named.name,
+    displayName: cleanDisplayName(named.name, storeNorm),
     price,
     currency,
     priceText,
@@ -345,7 +360,7 @@ function buildItem(key: string, members: Member[]): ItemView {
       catMember?.deal.category ?? null,
       catMember?.post.title ?? null,
     ),
-    storeNorm: normalizeStore(store),
+    storeNorm,
     status,
     discount: {
       type: [
@@ -367,6 +382,7 @@ function buildItem(key: string, members: Member[]): ItemView {
     collectedAt: sources[0].collectedAt,
     firstSource,
     sources,
+    imageUrl: null,
   };
 }
 
@@ -383,6 +399,12 @@ export interface FeedOptions {
    */
   status?: "all" | "active" | "ended";
   sort?: "latest" | "hot" | "price";
+  /**
+   * 상품명 검색어 — 부분 일치(대소문자 무시).
+   * 아이템 대표 이름과 출처 게시글 제목 모두에서 찾는다
+   * (이름이 없는 딜은 게시글 제목으로라도 걸리도록).
+   */
+  q?: string | null;
 }
 
 /** 출처 stats 합산 인기 점수 — 추천이 조회수보다 상위 가중치. */
@@ -506,6 +528,41 @@ export function getDealFeed(
     let items = [...groups.entries()].map(([key, members]) =>
       buildItem(key, members),
     );
+
+    /* 썸네일 캐시 일괄 조회 — URL 기반 키만 해당. */
+    const urlKeys = items
+      .map((i) => i.key)
+      .filter((k) => !k.startsWith("post:"));
+
+    if (urlKeys.length > 0) {
+      const ph = urlKeys.map(() => "?").join(", ");
+      const imgRows = db
+        .prepare(
+          `SELECT product_key, image_url FROM product_images
+           WHERE product_key IN (${ph}) AND image_url != ''`,
+        )
+        .all(...urlKeys) as { product_key: string; image_url: string }[];
+
+      const imgByKey = new Map(imgRows.map((r) => [r.product_key, r.image_url]));
+
+      for (const item of items) {
+        item.imageUrl = imgByKey.get(item.key) ?? null;
+      }
+    }
+
+    if (options.q) {
+      const needle = options.q.trim().toLowerCase();
+
+      if (needle.length > 0) {
+        items = items.filter((i) => {
+          if (i.name && i.name.toLowerCase().includes(needle)) return true;
+
+          return i.sources.some((s) =>
+            s.title.toLowerCase().includes(needle),
+          );
+        });
+      }
+    }
 
     if (options.category) {
       items = items.filter((i) => i.categoryNorm === options.category);
