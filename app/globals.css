@@ -182,13 +182,20 @@ a {
 }
 
 .chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   background: white;
-  border-radius: 999px;
-  padding: 6px 12px;
-  color: #555;
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.chip img {
+  display: block;
+  height: 22px;
+  width: auto;
+  border-radius: 5px;
 }
 
 .chip:hover {
@@ -196,9 +203,8 @@ a {
 }
 
 .chip.active {
-  background: var(--accent);
-  color: white;
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* Summary */

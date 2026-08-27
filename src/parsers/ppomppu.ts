@@ -748,7 +748,13 @@ function groupProductSections(
     const markerMatch = line.text.match(PRICE_MARKER);
 
     if (markerMatch && markerMatch.index !== undefined) {
-      const parsed = parsePriceText(line.text);
+      /*
+       * 가격 파싱은 마커 뒤 구간만 — 마커 앞 토큰은 상품명
+       * 부분이거나 적립금 같은 보조 금액이다.
+       */
+      const parsed = parsePriceText(
+        line.text.slice(markerMatch.index),
+      );
 
       if (
         (parsed.price !== null && parsed.price > 0) ||
@@ -818,17 +824,26 @@ function findVariantPriceLines(
       continue;
     }
 
-    const parsed = parsePriceText(line.text);
+    const markerMatch = line.text.match(markerRegex);
+
+    if (!markerMatch) {
+      continue;
+    }
+
+    /*
+     * 가격은 마커 뒤 구간에서 — 마커 앞은 옵션명/보조 금액이다.
+     */
+    const parsed = parsePriceText(
+      line.text.slice(markerMatch.index),
+    );
 
     if (parsed.price === null) {
       continue;
     }
 
-    const markerMatch = line.text.match(markerRegex);
-
-    const name = markerMatch
-      ? cleanText(line.text.slice(0, markerMatch.index))
-      : null;
+    const name = cleanText(
+      line.text.slice(0, markerMatch.index),
+    ) || null;
 
     candidates.push({
       name: name || null,
@@ -865,7 +880,9 @@ function extractSinglePrice(
       continue;
     }
 
-    if (!PRICE_MARKER.test(line.text)) {
+    const markerMatch = line.text.match(PRICE_MARKER);
+
+    if (!markerMatch) {
       continue;
     }
 
@@ -873,7 +890,16 @@ function extractSinglePrice(
       continue;
     }
 
-    const parsed = parsePriceText(line.text);
+    /*
+     * 마커 뒤 구간만 파싱한다. 마커는 라벨이라 가격이 뒤에 오고,
+     * 마커 앞 숫자 토큰은 적립금/쿠폰액 같은 보조 정보다.
+     * (실사례: "네멤이면 적립금 1,000원정도 있어서 체감가
+     *  4천원대" — 전체 라인을 파싱하면 적립금 1,000원이
+     *  상품 가격으로 잡힌다.)
+     */
+    const parsed = parsePriceText(
+      line.text.slice(markerMatch.index),
+    );
 
     if (parsed.price !== null) {
       return parsed;

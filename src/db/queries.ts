@@ -2,8 +2,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
 import {
+  isOtherStore,
   normalizeCategory,
   normalizeStore,
+  OTHER_STORE_FILTER,
   type NormCategory,
 } from "./taxonomy";
 
@@ -509,7 +511,14 @@ export function getDealFeed(
     }
 
     if (options.store) {
-      items = items.filter((i) => i.storeNorm === options.store);
+      /*
+       * "기타"는 고정 스토어 목록 밖 전부(스토어 미상 포함)를
+       * 묶는 캐치올 필터다. 나머지는 정확 매칭.
+       */
+      items =
+        options.store === OTHER_STORE_FILTER
+          ? items.filter((i) => isOtherStore(i.storeNorm))
+          : items.filter((i) => i.storeNorm === options.store);
     }
 
     if (options.status === "active") {

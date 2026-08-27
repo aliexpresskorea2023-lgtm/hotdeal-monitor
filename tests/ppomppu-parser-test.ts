@@ -15,6 +15,8 @@ import { parsePpomppuHtml } from "../src/parsers/ppomppu";
  * - 303693: 쿠팡 SmartEditor 마크업, 최대혜택가
  * - 303711: 체감가 변형 5개 (라이브커머스형)
  * - 303705: 할인 전 가격(취소선)과 판매가 공존
+ * - 303707: 마커 앞 적립금 토큰 회귀 (제목 5,400원이 정답)
+ * - 303702: 렌탈 다중 상품, 마커(카드 할인가) 뒤 가격 채택
  */
 
 const fixtures = [
@@ -23,6 +25,8 @@ const fixtures = [
   { file: "ppomppu-303693.html", no: "303693" },
   { file: "ppomppu-303711.html", no: "303711" },
   { file: "ppomppu-303705.html", no: "303705" },
+  { file: "ppomppu-303707.html", no: "303707" },
+  { file: "ppomppu-303702.html", no: "303702" },
 ];
 
 for (const fixture of fixtures) {

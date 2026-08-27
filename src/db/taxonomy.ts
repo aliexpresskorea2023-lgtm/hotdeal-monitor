@@ -109,32 +109,111 @@ export function normalizeCategory(
   return CATEGORY_MAP[community]?.[raw] ?? "기타";
 }
 
-/** 스토어 표기 별칭 → 대표 표기. null/빈 값은 "기타". */
+/**
+ * 스토어 필터 고정 순서 (2026-08-27 사용자 지정).
+ * "기타"는 목록 밖 모든 스토어를 묶는 캐치올이라 별도 상수.
+ */
+export const STORE_FILTERS = [
+  "알리익스프레스",
+  "쿠팡",
+  "네이버",
+  "토스",
+  "11번가",
+  "지마켓",
+  "옥션",
+  "SSG",
+  "카카오톡딜",
+  "오늘의집",
+  "무신사",
+  "컬리",
+  "롯데온",
+  "다나와",
+  "아마존",
+  "타오바오",
+  "테무",
+] as const;
+
+export type StoreFilter = (typeof STORE_FILTERS)[number];
+
+export const OTHER_STORE_FILTER = "기타";
+
+/** 칩 렌더링용 로고 경로 (public/store-logos/). */
+export const STORE_FILTER_LOGOS: Record<string, string> = {
+  전체: "/store-logos/all.png",
+  알리익스프레스: "/store-logos/aliexpress.jpeg",
+  쿠팡: "/store-logos/coupang.jpeg",
+  네이버: "/store-logos/naver.png",
+  토스: "/store-logos/toss.png",
+  "11번가": "/store-logos/11st.jpeg",
+  지마켓: "/store-logos/gmarket.jpeg",
+  옥션: "/store-logos/auction.png",
+  SSG: "/store-logos/ssg.png",
+  카카오톡딜: "/store-logos/kakaodeal.png",
+  오늘의집: "/store-logos/ohouse.png",
+  무신사: "/store-logos/musinsa.png",
+  컬리: "/store-logos/kurly.png",
+  롯데온: "/store-logos/lotteon.png",
+  다나와: "/store-logos/danawa.jpeg",
+  아마존: "/store-logos/amazon.jpg",
+  타오바오: "/store-logos/taobao.png",
+  테무: "/store-logos/temu.jpeg",
+  기타: "/store-logos/etc.png",
+};
+
+const STORE_FILTER_SET: ReadonlySet<string> = new Set(STORE_FILTERS);
+
+/** 고정 목록 밖 스토어면 "기타" 캐치올 대상. */
+export function isOtherStore(storeNorm: string): boolean {
+  return !STORE_FILTER_SET.has(storeNorm);
+}
+
+/** 스토어 표기 별칭 → 대표 표기(필터 라벨과 동일). null/빈 값은 "기타". */
 const STORE_ALIASES: Record<string, string> = {
   지마켓: "지마켓",
   G마켓: "지마켓",
   GMARKET: "지마켓",
+  옥션: "옥션",
+  SSG: "SSG",
   네이버: "네이버",
   네이버스토어: "네이버",
+  네이버쇼핑: "네이버",
   네이버페이: "네이버",
   네이버항공권: "네이버",
-  알리: "알리",
-  알리익스프레스: "알리",
-  "알리 타임딜": "알리",
-  알리익스프레스타임딜: "알리",
-  카카오: "카카오",
-  카카오톡: "카카오",
-  "카카오 톡딜": "카카오",
+  네이버항공: "네이버",
+  알리: "알리익스프레스",
+  알리익스프레스: "알리익스프레스",
+  "알리 타임딜": "알리익스프레스",
+  알리익스프레스타임딜: "알리익스프레스",
+  "알리 코인딜": "알리익스프레스",
+  카카오: "카카오톡딜",
+  카카오톡: "카카오톡딜",
+  "카카오 톡딜": "카카오톡딜",
+  톡딜: "카카오톡딜",
   쿠팡: "쿠팡",
   쿠팡와우: "쿠팡",
+  쿠팡로켓직구: "쿠팡",
   토스: "토스",
   토스쇼핑: "토스",
+  "11번가": "11번가",
+  오늘의집: "오늘의집",
+  무신사: "무신사",
+  컬리: "컬리",
+  롯데온: "롯데온",
+  다나와: "다나와",
+  "다나와 x 아정당": "다나와",
+  "다나와×아정당": "다나와",
+  아마존: "아마존",
+  일마존: "아마존",
+  타오바오: "타오바오",
+  테무: "테무",
 };
 
 export function normalizeStore(raw: string | null): string {
-  if (!raw) return "기타";
+  if (!raw) return OTHER_STORE_FILTER;
 
   const trimmed = raw.trim();
+
+  if (!trimmed) return OTHER_STORE_FILTER;
 
   return STORE_ALIASES[trimmed] ?? trimmed;
 }

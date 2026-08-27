@@ -1,5 +1,11 @@
 import { getDealFeed, type ItemView } from "@/src/db/queries";
-import { CATEGORIES, type NormCategory } from "@/src/db/taxonomy";
+import {
+  CATEGORIES,
+  OTHER_STORE_FILTER,
+  STORE_FILTER_LOGOS,
+  STORE_FILTERS,
+  type NormCategory,
+} from "@/src/db/taxonomy";
 
 /*
  * 데이터 소스: data/hotdeal.db (수집 파이프라인 적재분).
@@ -196,28 +202,19 @@ export default async function Home({ searchParams }: PageProps) {
   const rawStatus = first(raw.status);
   const rawSort = first(raw.sort);
 
-  /* facets(스토어 칩 목록)용 전체 피드와 필터 적용 피드를 분리 조회. */
+  /* 전체 아이템 수(요약 영역)용 전체 피드. 스토어 칩은 고정 목록. */
   const all = getDealFeed();
-
-  const storeCounts = new Map<string, number>();
-  for (const item of all.items) {
-    storeCounts.set(
-      item.storeNorm,
-      (storeCounts.get(item.storeNorm) ?? 0) + 1,
-    );
-  }
-
-  const topStores = [...storeCounts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 12)
-    .map(([name]) => name);
 
   const category: NormCategory | null = (CATEGORIES as readonly string[])
     .includes(rawCat ?? "")
     ? (rawCat as NormCategory)
     : null;
   const store =
-    rawStore && storeCounts.has(rawStore) ? rawStore : null;
+    rawStore &&
+    ((STORE_FILTERS as readonly string[]).includes(rawStore) ||
+      rawStore === OTHER_STORE_FILTER)
+      ? rawStore
+      : null;
   const status =
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const sort =
@@ -329,16 +326,18 @@ export default async function Home({ searchParams }: PageProps) {
           <a
             className={store === null ? "chip active" : "chip"}
             href={hrefFor(current, { store: null })}
+            title="전체"
           >
-            전체
+            <img src={STORE_FILTER_LOGOS["전체"]} alt="전체" />
           </a>
-          {topStores.map((name) => (
+          {[...STORE_FILTERS, OTHER_STORE_FILTER].map((name) => (
             <a
               key={name}
               className={store === name ? "chip active" : "chip"}
               href={hrefFor(current, { store: name })}
+              title={name}
             >
-              {name}
+              <img src={STORE_FILTER_LOGOS[name]} alt={name} />
             </a>
           ))}
         </div>
