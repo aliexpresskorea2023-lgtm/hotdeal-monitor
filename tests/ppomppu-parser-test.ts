@@ -5,7 +5,7 @@ import { parsePpomppuHtml } from "../src/parsers/ppomppu";
 /*
  * 뽐뿌 파서 출력 눈 확인용 테스트.
  *
- * 5개 fixture를 파싱해서 JSON으로 덤프한다.
+ * 8개 fixture를 파싱해서 JSON으로 덤프한다.
  * 스키마 정합성은 schema-validation-test.ts가 담당하고,
  * 여기서는 값 자체가 의도대로 추출됐는지 확인한다.
  *
@@ -17,6 +17,7 @@ import { parsePpomppuHtml } from "../src/parsers/ppomppu";
  * - 303705: 할인 전 가격(취소선)과 판매가 공존
  * - 303707: 마커 앞 적립금 토큰 회귀 (제목 5,400원이 정답)
  * - 303702: 렌탈 다중 상품, 마커(카드 할인가) 뒤 가격 채택
+ * - 303722: 공구형 다중 상품 ("[공구혜택가 N만]" 라벨 → 상품명 → 링크)
  */
 
 const fixtures = [
@@ -27,6 +28,7 @@ const fixtures = [
   { file: "ppomppu-303705.html", no: "303705" },
   { file: "ppomppu-303707.html", no: "303707" },
   { file: "ppomppu-303702.html", no: "303702" },
+  { file: "ppomppu-303722.html", no: "303722" },
 ];
 
 for (const fixture of fixtures) {

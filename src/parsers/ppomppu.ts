@@ -678,7 +678,16 @@ type ProductGroup = {
  * "정가/정상가" 계열 원가 마커는 별도 제외 로직에서만 쓴다.
  */
 const PRICE_MARKER =
-  /최대\s*혜택가|혜택가|체감가|판매가|할인가|쿠폰\s*가|최종가|구매가/;
+  /공동구매\s*혜택가|공구\s*혜택가|최대\s*혜택가|혜택가|체감가|판매가|할인가|쿠폰\s*가|최종가|구매가/;
+
+/**
+ * 라인 전체가 대괄호 하나에 감싸여 있으면 가격 라벨이다.
+ * 예: "[공구혜택가 125만]" — 마커 앞 "[공구"는 라벨의 일부이지
+ * 상품명이 아니다.
+ */
+function isBracketLabel(text: string): boolean {
+  return /^\[[^\]]*\]$/.test(text.trim());
+}
 
 function groupProductSections(
   lines: BlockLine[],
@@ -687,6 +696,14 @@ function groupProductSections(
 
   let pendingName: string | null = null;
   let pendingPrice: ParsedPrice | null = null;
+  /*
+   * 가격은 확인됐는데 상품명이 아직 안 나온 상태.
+   * 공구(공동구매) 글처럼 가격 라벨이 먼저 오는 패턴:
+   *   "[공구혜택가 125만]" → 상품명 라인 → 링크
+   * 이 상태의 일반 텍스트 라인은 가격을 리셋하지 않고
+   * 상품명 자리를 채운다.
+   */
+  let awaitingName = false;
 
   for (const line of lines) {
     /*
@@ -704,6 +721,7 @@ function groupProductSections(
 
       pendingName = null;
       pendingPrice = null;
+      awaitingName = false;
       continue;
     }
 
@@ -740,8 +758,12 @@ function groupProductSections(
      *
      * - 마커 앞에 텍스트가 있으면 그 부분이 상품명이다
      *   (한 라인에 이름+가격이 같이 쓰는 패턴).
-     * - 마커로 시작하면 상품명은 이전 라인의 것을 유지한다
-     *   (이름/가격/링크가 각각 별도 라인인 패턴).
+     *   단 라인이 통째로 대괄호 라벨("[공구혜택가 125만]")이면
+     *   앞부분은 라벨의 일부라 상품명으로 쓰지 않는다.
+     * - 상품명 부분이 없고 이미 받은 상품명이 있으면 그걸
+     *   유지한다 (이름/가격/링크가 각각 별도 라인인 패턴).
+     * - 상품명 부분이 없고 받은 상품명도 없으면 이름이 뒤에
+     *   나오는 패턴 — awaitingName으로 전환한다.
      *
      * 가격은 0 초과만 채택 (가격 전용 라인과 동일 정책).
      */
@@ -764,8 +786,21 @@ function groupProductSections(
           line.text.slice(0, markerMatch.index),
         );
 
-        if (namePart) {
+        if (namePart && !isBracketLabel(line.text)) {
+          /* 마커 앞에 인라인 상품명. */
           pendingName = namePart;
+          awaitingName = false;
+        } else if (isBracketLabel(line.text)) {
+          /*
+           * 대괄호 라벨은 섹션 헤더 — 상품명이 뒤에 오는
+           * 공구(공동구매) 형식. 라벨보다 앞서 나온 텍스트는
+           * 홍보 문구일 뿐이므로 이름 후보를 비우고 새로 받는다.
+           */
+          pendingName = null;
+          awaitingName = true;
+        } else if (!pendingName) {
+          /* 마커로 시작하고 받은 이름도 없으면 이름이 뒤에 옴. */
+          awaitingName = true;
         }
 
         pendingPrice = parsed;
@@ -775,8 +810,19 @@ function groupProductSections(
     }
 
     /*
-     * 일반 텍스트 라인: 다음 상품의 상품명 후보.
+     * 일반 텍스트 라인.
+     * - 가격 라벨 직후(awaitingName): 첫 텍스트 라인이 상품명.
+     *   이어지는 텍스트 라인(스펙/설명)은 이름에 붙이지 않는다.
+     * - 그 외: 다음 상품의 상품명 후보 (가격은 리셋).
      */
+    if (awaitingName) {
+      if (!pendingName) {
+        pendingName = line.text;
+      }
+
+      continue;
+    }
+
     pendingName = line.text;
     pendingPrice = null;
   }
@@ -832,6 +878,8 @@ function findVariantPriceLines(
 
     /*
      * 가격은 마커 뒤 구간에서 — 마커 앞은 옵션명/보조 금액이다.
+     * 단 라인이 통째로 대괄호 라벨("[공구혜택가 125만]")이면
+     * 마커 앞부분은 라벨의 일부라 상품명으로 쓰지 않는다.
      */
     const parsed = parsePriceText(
       line.text.slice(markerMatch.index),
@@ -841,9 +889,10 @@ function findVariantPriceLines(
       continue;
     }
 
-    const name = cleanText(
-      line.text.slice(0, markerMatch.index),
-    ) || null;
+    const name = isBracketLabel(line.text)
+      ? null
+      : cleanText(line.text.slice(0, markerMatch.index)) ||
+        null;
 
     candidates.push({
       name: name || null,
