@@ -47,6 +47,7 @@ interface ManifestEnrichment {
   news_fetched_at?: string | null;
   youtube_count?: number | null;
   youtube_fetched_at?: string | null;
+  youtube_top?: unknown;
   monthly_pc_qc?: number | null;
   monthly_mobile_qc?: number | null;
   ads_fetched_at?: string | null;
@@ -81,6 +82,19 @@ function main(): void {
   }
 
   const db = openDb(DEFAULT_DB_PATH);
+
+  /* 마이그레이션 가드 — 기존 DB는 CREATE TABLE IF NOT EXISTS로 컬럼이
+   * 추가되지 않으므로 멱등 ALTER. (신규 컬럼: youtube_top, 2026-08-28) */
+  const enrichCols = new Set(
+    (
+      db.prepare("PRAGMA table_info(trend_enrichment)").all() as Array<{
+        name: string;
+      }>
+    ).map((r) => r.name),
+  );
+  if (!enrichCols.has("youtube_top")) {
+    db.exec("ALTER TABLE trend_enrichment ADD COLUMN youtube_top TEXT");
+  }
 
   let weeks = 0;
   let keywords = 0;
@@ -117,15 +131,16 @@ function main(): void {
     const upsertEnrich = db.prepare(
       `INSERT INTO trend_enrichment
          (ymd, keyword, news_count, news_sample, news_fetched_at,
-          youtube_count, youtube_fetched_at,
+          youtube_count, youtube_fetched_at, youtube_top,
           monthly_pc_qc, monthly_mobile_qc, ads_fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(ymd, keyword) DO UPDATE SET
          news_count = COALESCE(excluded.news_count, trend_enrichment.news_count),
          news_sample = COALESCE(excluded.news_sample, trend_enrichment.news_sample),
          news_fetched_at = COALESCE(excluded.news_fetched_at, trend_enrichment.news_fetched_at),
          youtube_count = COALESCE(excluded.youtube_count, trend_enrichment.youtube_count),
          youtube_fetched_at = COALESCE(excluded.youtube_fetched_at, trend_enrichment.youtube_fetched_at),
+         youtube_top = COALESCE(excluded.youtube_top, trend_enrichment.youtube_top),
          monthly_pc_qc = COALESCE(excluded.monthly_pc_qc, trend_enrichment.monthly_pc_qc),
          monthly_mobile_qc = COALESCE(excluded.monthly_mobile_qc, trend_enrichment.monthly_mobile_qc),
          ads_fetched_at = COALESCE(excluded.ads_fetched_at, trend_enrichment.ads_fetched_at)`,
@@ -201,6 +216,9 @@ function main(): void {
           row.news_fetched_at ?? null,
           row.youtube_count ?? null,
           row.youtube_fetched_at ?? null,
+          row.youtube_top
+            ? JSON.stringify(row.youtube_top)
+            : null,
           row.monthly_pc_qc ?? null,
           row.monthly_mobile_qc ?? null,
           row.ads_fetched_at ?? null,

@@ -1167,6 +1167,21 @@ a {
   font-size: 12px;
 }
 
+.yt-top {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.yt-top a {
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.yt-top a:hover {
+  text-decoration: underline;
+}
+
 .source-note {
   margin: 22px 0 0;
   color: var(--muted-foreground);

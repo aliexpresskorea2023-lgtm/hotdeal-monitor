@@ -126,6 +126,8 @@ def load_state() -> dict:
         "news_done": set(),  # (ymd, keyword)
         "ads_done": set(),   # (ymd, keyword)
         "yt_done": set(),    # (ymd, keyword)
+        # 수집은 됐지만 인기 영상 정보가 없는 행(구형 수집분) — 재수집 후보.
+        "yt_refetch": set(),
     }
 
     if not DB_PATH.exists():
@@ -163,6 +165,16 @@ def load_state() -> dict:
                     state["yt_done"].add((ymd, kw))
         except sqlite3.OperationalError:
             pass
+
+        # 인기 영상 미보유 수집분 — 한국 리전·조회수 선두 영상 백필 대상.
+        try:
+            rows = db.execute(
+                "SELECT ymd, keyword FROM trend_enrichment"
+                " WHERE youtube_fetched_at IS NOT NULL AND youtube_top IS NULL"
+            ).fetchall()
+            state["yt_refetch"] = {(ymd, kw) for ymd, kw in rows}
+        except sqlite3.OperationalError:
+            pass  # youtube_top 컬럼 추가 전
     finally:
         db.close()
 
@@ -406,26 +418,49 @@ def fetch_ads_batch(keywords: list, creds: dict) -> dict:
 # ── YouTube Data API (키 필요) ───────────────────────────────────
 
 
-def fetch_youtube_count(keyword: str, api_key: str) -> int | None:
-    """search 호출 1회(100유닛)로 관련 영상수 추정치 조회."""
+def fetch_youtube_count(keyword: str, api_key: str) -> tuple[int | None, dict | None]:
+    """search 호출 1회(100유닛)로 관련 영상수 추정치 + 조회수 선두 영상 조회.
+
+    - order=viewCount: 첫 결과가 관련 영상 중 조회수 최고. 정렬만 바꾼
+      같은 쿼리라 개수 추정치도 함께 얻는다 — 추가 호출/쿼터 없음.
+    - regionCode=KR + relevanceLanguage=ko: 수집 범위를 한국 리전·한국어
+      콘텐츠로 제한한다 (2026-08-28 사용자 요청).
+    """
     query = urllib.parse.urlencode(
         {
             "part": "snippet",
             "type": "video",
             "maxResults": 1,
+            "order": "viewCount",
+            "regionCode": "KR",
+            "relevanceLanguage": "ko",
             "q": keyword,
             "key": api_key,
         }
     )
     resp = session.get(f"{YT_SEARCH}?{query}", timeout=30)
 
-    if resp.status_code == 403:
-        # 쿼터 소진 등 — 이번 실행은 유튜브 수집 중단.
+    if resp.status_code in (403, 429):
+        # 쿼터 소진 등 — 이번 실행은 유튜브 수집 중단 (내일 재시도).
         raise PermissionError(resp.text[:200])
 
     resp.raise_for_status()
     data = resp.json()
-    return (data.get("pageInfo") or {}).get("totalResults")
+    count = (data.get("pageInfo") or {}).get("totalResults")
+
+    top = None
+    items = data.get("items") or []
+    if items:
+        snippet = items[0].get("snippet") or {}
+        video_id = (items[0].get("id") or {}).get("videoId")
+        if video_id:
+            top = {
+                "id": video_id,
+                "title": snippet.get("title"),
+                "channel": snippet.get("channelTitle"),
+            }
+
+    return count, top
 
 
 # ── 본 흐름 ──────────────────────────────────────────────────────
@@ -601,8 +636,10 @@ def main() -> int:
 
     yt_targets: list[tuple[str, str]] = []
     if yt_key:
-        yt_targets = sorted(base_pairs - state["yt_done"])
-        yt_targets = yt_targets[: args.youtube_limit]
+        fresh = sorted(base_pairs - state["yt_done"])
+        # 미수집분 다음으로 인기 영상 없는 기존 수집분을 백필 (쿼터 남는 만큼).
+        refetch = sorted(state["yt_refetch"] - set(fresh))
+        yt_targets = (fresh + refetch)[: args.youtube_limit]
 
     ads_targets: list[tuple[str, str]] = []
     if ads_creds:
@@ -646,9 +683,11 @@ def main() -> int:
         if yt_stopped:
             break
         try:
-            count = fetch_youtube_count(pair[1], yt_key)
+            count, top = fetch_youtube_count(pair[1], yt_key)
             entry = slot(pair)
             entry["youtube_count"] = count
+            # {} = 결과 없음 마커 — 재수집 대상에서 영구 제외.
+            entry["youtube_top"] = top or {}
             entry["youtube_fetched_at"] = now_kst_iso()
             yt_ok += 1
         except PermissionError as exc:

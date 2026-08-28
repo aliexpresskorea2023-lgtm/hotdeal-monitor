@@ -51,6 +51,13 @@ export interface TrendNewsItem {
   link: string | null;
 }
 
+/** 조회수 선두 영상 — 자세히 보기의 인기 영상 링크용. */
+export interface TrendYouTubeTop {
+  id: string;
+  title: string | null;
+  channel: string | null;
+}
+
 export interface TrendKeywordView {
   rank: number;
   keyword: string;
@@ -64,6 +71,8 @@ export interface TrendKeywordView {
   newsCount: number | null;
   newsSample: TrendNewsItem[];
   youtubeCount: number | null;
+  /** 관련 영상 중 조회수 선두 (한국 리전 수집). */
+  youtubeTop: TrendYouTubeTop | null;
   /** 네이버 검색광고 월간 모바일 쿼리수. */
   mobileQc: number | null;
   /** 네이버 검색광고 월간 PC 쿼리수. */
@@ -163,7 +172,7 @@ export function getTrendKeywords(
         .prepare(
           `SELECT k.rank, k.keyword, k.sub_title, k.status, k.fluctuation,
                   k.category_id, k.category_name, k.sync_date,
-                  e.news_count, e.news_sample, e.youtube_count,
+                  e.news_count, e.news_sample, e.youtube_count, e.youtube_top,
                   e.monthly_pc_qc, e.monthly_mobile_qc
            FROM trend_keywords k
            LEFT JOIN trend_enrichment e
@@ -191,6 +200,7 @@ export function getTrendKeywords(
       newsCount: (r.news_count as number | null) ?? null,
       newsSample: parseNewsSample(r.news_sample as string | null),
       youtubeCount: (r.youtube_count as number | null) ?? null,
+      youtubeTop: parseYouTubeTop(r.youtube_top as string | null),
       mobileQc: (r.monthly_mobile_qc as number | null) ?? null,
       pcQc: (r.monthly_pc_qc as number | null) ?? null,
     }));
@@ -217,6 +227,33 @@ function parseNewsSample(raw: string | null): TrendNewsItem[] {
       .slice(0, 3);
   } catch {
     return [];
+  }
+}
+
+function parseYouTubeTop(raw: string | null): TrendYouTubeTop | null {
+  if (!raw) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof (parsed as TrendYouTubeTop).id !== "string"
+    ) {
+      /* '{}' = 결과 없음 마커. */
+      return null;
+    }
+
+    const top = parsed as TrendYouTubeTop;
+
+    return {
+      id: top.id,
+      title: top.title ?? null,
+      channel: top.channel ?? null,
+    };
+  } catch {
+    return null;
   }
 }
 

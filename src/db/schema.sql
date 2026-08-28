@@ -250,6 +250,8 @@ CREATE TABLE IF NOT EXISTS trend_enrichment (
   news_fetched_at TEXT,
   youtube_count INTEGER,
   youtube_fetched_at TEXT,
+  -- 조회수 선두 영상 {"id","title","channel"} JSON; '{}' = 결과 없음 마커.
+  youtube_top TEXT,
   monthly_pc_qc INTEGER,
   monthly_mobile_qc INTEGER,
   ads_fetched_at TEXT,

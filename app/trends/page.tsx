@@ -302,10 +302,30 @@ export default async function TrendsPage({ searchParams }: PageProps) {
                         {row.newsCount !== null && (
                           <> · 기사 {newsCountLabel(row.newsCount)}건</>
                         )}
-                        {row.youtubeCount !== null && (
-                          <> · 유튜브 {qcLabel(row.youtubeCount)}건</>
-                        )}
                       </p>
+                      <p className="qc-detail">
+                        유튜브: 관련 콘텐츠 수 추정치{" "}
+                        {row.youtubeCount === null
+                          ? "—"
+                          : `${qcLabel(row.youtubeCount)}건`}
+                      </p>
+                      {row.youtubeTop && (
+                        <p className="yt-top">
+                          인기 영상:{" "}
+                          <a
+                            href={`https://www.youtube.com/watch?v=${row.youtubeTop.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {row.youtubeTop.title ?? row.keyword}
+                          </a>
+                          {row.youtubeTop.channel && (
+                            <span className="news-source">
+                              {row.youtubeTop.channel}
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </details>
                 </article>
@@ -315,8 +335,8 @@ export default async function TrendsPage({ searchParams }: PageProps) {
 
           <p className="source-note">
             출처: 네이버 쇼핑 베스트 주간 랭킹 · 기사수: Google News
-            RSS(상한 100) · 검색량: 네이버 검색광고 키워드도구 · 유튜브수:
-            YouTube Data API 추정치
+            RSS(상한 100) · 검색량: 네이버 검색광고 키워드도구 · 유튜브:
+            관련 콘텐츠(영상) 수 추정치 — YouTube Data API, 한국 리전 기준
           </p>
         </>
       )}
