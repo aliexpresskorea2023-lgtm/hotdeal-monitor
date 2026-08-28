@@ -188,10 +188,10 @@ if [[ "$ingest_rc" -eq 0 ]]; then
     fi
 
     if [[ -n "$VTOKEN" && -n "$VTEAM" && -n "$VPROJ" ]]; then
-      # git 배포 빌드는 통상 1~3분 — 15초 간격으로 최대 6분 대기.
-      for i in $(seq 1 24); do
+      # git 배포 빌드는 실측 5~7분 — 15초 간격으로 최대 12분 대기.
+      for i in $(seq 1 48); do
         read -r dep_id dep_state < <(SHA="$pushed_sha" curl -s -H "Authorization: Bearer $VTOKEN" \
-            "https://api.vercel.com/v6/deployments?teamId=$VTEAM&projectId=$VPROJ&limit=6" \
+            "https://api.vercel.com/v6/deployments?teamId=$VTEAM&projectId=$VPROJ&limit=10" \
           | SHA="$pushed_sha" python3 -c "
 import json, os, sys
 sha = os.environ['SHA']
