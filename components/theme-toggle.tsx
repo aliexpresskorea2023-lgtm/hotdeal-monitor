@@ -29,8 +29,10 @@ export function ThemeToggle() {
 
   return (
     <div className="theme-box">
-      {dark ? <MoonStar size={15} /> : <SunMedium size={15} />}
-      {dark ? "다크 모드" : "라이트 모드"}
+      <span className="theme-label">
+        {dark ? <MoonStar size={15} /> : <SunMedium size={15} />}
+        {dark ? "다크 모드" : "라이트 모드"}
+      </span>
       <button
         type="button"
         className="theme-switch"

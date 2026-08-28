@@ -96,7 +96,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
             const logo = storeLogo(item.storeNorm);
 
             return (
-              <Link className="deal-row" key={item.dealId} href={`/history/${item.dealId}`}>
+              <Link className="deal-row hist-row" key={item.dealId} href={`/history/${item.dealId}`}>
                 <div className="thumb">
                   <img src={logo} alt={item.storeNorm} />
                 </div>

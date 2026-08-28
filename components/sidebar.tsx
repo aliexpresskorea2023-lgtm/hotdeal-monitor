@@ -63,7 +63,7 @@ export function Sidebar({ adminMode = false }: { adminMode?: boolean }) {
               className={active ? "nav-item active" : "nav-item"}
             >
               <Icon size={17} />
-              {label}
+              <span className="nav-label">{label}</span>
             </Link>
           );
         })}
@@ -81,7 +81,7 @@ export function Sidebar({ adminMode = false }: { adminMode?: boolean }) {
                   className={active ? "nav-item active" : "nav-item"}
                 >
                   <Icon size={17} />
-                  {label}
+                  <span className="nav-label">{label}</span>
                 </Link>
               );
             })}
