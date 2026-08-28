@@ -209,7 +209,7 @@ for d in json.load(sys.stdin).get('deployments', []):
           log "[4/4] git 배포 $dep_state — CLI 폴백으로 전환"
           break
         fi
-        log "[4/4] git 배포 빌드 대기 ($i/24, ${dep_state:-BUILDING})"
+        log "[4/4] git 배포 빌드 대기 ($i/48, ${dep_state:-BUILDING})"
         sleep 15
       done
     else
