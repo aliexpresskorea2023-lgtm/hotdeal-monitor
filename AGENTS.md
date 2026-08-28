@@ -79,7 +79,7 @@ SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema
 
 ### 주기 수집 스케줄링 (2026-08-26) — run-pipeline.sh + launchd(로컬 Mac)
 
-단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. 4단계 순차: ① collect(Python) ② ingest(Node) ③ 썸네일 수집(`fetch-thumbnails.ts --limit 40`, 베스트 에포트) ④ 배포(아래 "배포 파이프라인" 참고). collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
+단일 진입점: `collector/run-pipeline.sh [collect.py 옵션]`. 4단계 순차: ① collect(Python) ② ingest(Node) ③ 썸네일 수집(`fetch-thumbnails.ts --limit 40`, 베스트 에포트, 2단계: og:image → 다나와 폴백) ④ 배포(아래 "배포 파이프라인" 참고). collect가 일부 차단(exit 1)이나 완전 실패(exit 2+)여도 ingest는 반드시 돌려 부분 수집분·이전 미적재분을 따라잡는다. mkdir 기반 잠금으로 중복 실행 방지(진행 중이면 exit 75). 로그는 `data/logs/pipeline.log`(append).
 
 스케줄링 위치 최종 결정(2026-08-26): **로컬 Mac + launchd, 2시간 주기.**
 
@@ -230,3 +230,18 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 **펨코 종료 마커** (`fmkorea.ts` `extractStatus`): `div[class*="hotdeal_var"]`(접미사 세션가변) 텍스트에 "종료" 있으면 즉시 ended — 마커가 `<article>` 밖 `.rd_body` 직하에 있어 본문 스캔으로는 못 잡던 것.
 
 **스냅샷 리페어** (`scripts/repair-snapshots.ts`, `--dry-run`): data/crawls 전 run을 시간순 재파싱 — ① status ended 승격만(강등 금지) ② 가격은 저장 딜과 seq 개수 일치 시 null→파싱값 보강 + observation 기록. 실측: 승격 15건·가격 5건. 인제스트와 동일 제외 필터로 seq를 맞춘 것이 핵심(개수 불일치 글은 스킵).
+
+### v1.2 커뮤니티 필터 + 필드형 상품명 + 다나와 썸네일 (2026-08-27)
+
+**커뮤니티 필터**: `taxonomy.ts`에 `COMMUNITIES`(5종) + `COMMUNITY_LOGOS`(`public/community-logos/*`). 홈·순위표 둘 다 `?community=` 쿼리스트링 칩, `getDealFeed`는 `sources.some(s => s.source === com)` 필터(병합 아이템은 어느 한 커뮤니티 소속이면 노출).
+
+**인기 점수 표기**: 순위표 점수 숫자 제거 — 1위 대비 상대 비율 프로그레스바만 표시(최소 폭 4%). 마우스 오버 툴팁에 조회수·추천·댓글 원문 숫자. 숫자 자체의 스케일(추천×1e8)이 외부 독자에게 해석 불가라 내린 결정.
+
+**필드형 상품명 표시** (`name.ts` `splitNameParts`): 정제된 표시명을 `main` + 수량/구성 미사로 분리 — 개수 단위(통·개·박스·팩…18종), 중량(총 N kg/g/L), N+N 번들, "개당" 파생. `ItemView.displayParts`로 전달, 렌더는 `main` + `.name-qty` 스팬(없으면 스킵). 브랜드/옵션명/품목넘버는 프리텍스트에서 신뢰 추출 불가라 분리 안 함 — 파서·DB는 원본 유지. **검색은 계속 원본 데이터**(아이템 이름 + 출처 게시글 제목) 대상이라 표시명과 무관하게 동작.
+
+**다나와 썸네일 폴백** (`fetch-thumbnails.ts` 2단계): 프론트 실시간 조회는 불가(다나와가 ~3.5MB 페이지를 SSR·CORS 미허용)라 수집기에서 검색해 `product_images`에 캐시. 대상은 가전/디지털 4개 카테고리만(다나와 카탈로그 범위) — 직접 링크는 og:image 3회 소진 후, 제휴/리다이렉트는 즉시. 검색어 = `splitNameParts(cleanDisplayName()).main`, 결과 상품명과 토큰 중복률 ≥50%(토큰 2개 이상일 때만) 채택. `attempts=4` = 다나와 시도 완료 마커(스키마 변경 없이 기존 컬럼 재활용), 3초 스로틀, `--danawa-limit`(기본 10, 파이프라인은 그대로).
+파싱 함정 실측: 페이지에 빈 광고 슬롯(`li class="prod_item"` 정확히 일치)이 섞여 있어 정확히 일치 클래스만 찾으면 "결과 없음" 오진 — 실제 결과는 `class="prod_item width_change searched"` 복합 클래스 + `data-product-order` 속성. 복합 클래스로 분할하고 유기 블록을 우선한다. 첫 백필 실측: 후보 88건 중 14건 채택(거절 사유는 검색 무관 결과·결과 없음 — 게시글 제목이 상품명인 케이스).
+
+**표시 폴백 체인**: 타일/썸네일 = 상품 이미지(`product_images`) → 원문 커뮤니티 로고 → 스토어 로고. 홈 타일·순위표 동일.
+
+**`.vercelignore` 신설**: `vercel deploy` 업로드가 .gitignore를 무시해 매 배포 ~300MB가 올라가던 것 차단 — onlook(112M), data/crawls(170M), collector/.venv(21M), tests(10M), 로그·잠금·WAL 보조파일 제외. `data/hotdeal.db` 본체는 제외 목록에 넣으면 안 된다.

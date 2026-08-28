@@ -1,0 +1,19 @@
+# vercel deploy 업로드 제외 목록.
+# `vercel deploy`는 .gitignore를 무시하고 작업 트리 전체를 올린다 —
+# 수집 원문 스냅샷(170M)·onlook(112M)·venv(21M)·테스트 픽스처(10M)가
+# 매 배포마다 올라가는 것을 여기서 막는다.
+# 주의: data/hotdeal.db 본체는 프로덕션 데이터라 반드시 업로드되어야 한다.
+
+onlook/
+data/crawls/
+data/logs/
+data/mock/
+data/schema/
+data/.pipeline.lock/
+data/hotdeal.db-wal
+data/hotdeal.db-shm
+collector/.venv/
+collector/__pycache__/
+tests/
+.vercel/output/
+*.log

@@ -196,6 +196,30 @@ export const STORE_FILTER_LOGOS: Record<string, string> = {
 
 const STORE_FILTER_SET: ReadonlySet<string> = new Set(STORE_FILTERS);
 
+/**
+ * 커뮤니티(출처 게시판) 필터 고정 순서 — 수집 대상 5곳.
+ * 표시 라벨은 src/lib/format.ts의 sourceLabel() 사용.
+ */
+export const COMMUNITIES = [
+  "fmkorea",
+  "ppomppu",
+  "ruliweb",
+  "quasarzone",
+  "arca",
+] as const;
+
+export type Community = (typeof COMMUNITIES)[number];
+
+/** 칩 렌더링용 커뮤니티 로고 경로 (public/community-logos/). */
+export const COMMUNITY_LOGOS: Record<Community, string> = {
+  fmkorea: "/community-logos/fmkorea.png",
+  ppomppu: "/community-logos/ppomppu.jpeg",
+  ruliweb: "/community-logos/ruliweb.png",
+  quasarzone: "/community-logos/quasarzone.png",
+  arca: "/community-logos/arca.jpeg",
+};
+
+
 /** 고정 목록 밖 스토어면 "기타" 캐치올 대상. */
 export function isOtherStore(storeNorm: string): boolean {
   return !STORE_FILTER_SET.has(storeNorm);

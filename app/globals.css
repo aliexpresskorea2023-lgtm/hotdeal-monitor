@@ -455,6 +455,16 @@ a {
   white-space: nowrap;
 }
 
+/* 필드형 상품명에서 분리된 구성/수량 필드 — 본체 뒤에 흐르듯 붙고,
+   값이 없으면 렌더링되지 않는다. */
+.name-qty {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
 .deal-row:hover .row-title {
   text-decoration: underline;
 }

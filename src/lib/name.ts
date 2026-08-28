@@ -107,3 +107,81 @@ export function cleanDisplayName(
 
   return out || name.trim();
 }
+
+/*
+ * 필드 분리 (2026-08-28) — 커머스 상품명 등록 관례를 본뜬 표시 규칙.
+ *
+ * 정제는 "어지러운 수식어 제거"고, 분리는 "남은 이름에서 구성/수량
+ * 정보를 별도 필드로 빼는 것"이다. 예:
+ *   "머스크멜론 특대과 2통(총5kg) 1개당 2.5kg"
+ *   → main: "머스크멜론 특대과" / quantity: "2통(총5kg) · 1개당 2.5kg"
+ *
+ * 카테고리별 관례는 단위 목록 자체에 반영되어 있다:
+ * - 식품·생활(통/팩/병/캔/kg/L...)과 패션·잡화(개/매/쌍/켤레...)의
+ *   수량·구성 토큰만 분리 대상이다.
+ * - 가전/PC의 스펙(256GB, i5, 512GB, 16인치)은 단위 목록에 없어
+ *   이름에 그대로 남는다 — 스펙은 전자제품 이름의 정체성이다.
+ * - 번들 표기("+ 포코 피아")는 단위가 아니라 분리하지 않는다.
+ *
+ * 없는 필드는 노출하지 않는 것이 규칙 — quantity가 null이면 화면에
+ * 아무것도 붙지 않는다.
+ */
+
+export interface NameParts {
+  /** 상품 이름 본체 */
+  main: string;
+  /** 분리된 구성/수량 표기 (없으면 null) */
+  quantity: string | null;
+}
+
+/** 꼬리의 개수 단위 토큰 — 뒤에 설명 괄호를 달 수 있다. */
+const COUNT_TAIL =
+  /\s*\d{1,3}(?:,\d{3})*\s*(?:통|개|박스|팩|병|캔|매|세트|입|수|장|쌍|켤레|포|스틱|캡슐|시트|정|권|튜브)(?:\s*\([^)]*\))?$/;
+
+/** 꼬리의 중량·용량 토큰. */
+const WEIGHT_TAIL =
+  /\s*(?:총\s*)?\d+(?:\.\d+)?\s*(?:kg|g|L|ml|리터|킬로|그램)(?:\s*\([^)]*\))?$/;
+
+/** 꼬리의 1+1 계열. */
+const PLUS_DEAL_TAIL = /\s*\d{1,2}\s*\+\s*\d{1,2}(?:\s*\+\s*\d{1,2})?$/;
+
+/** 꼬리의 단위당 표기 ("1개당 2.5kg"). */
+const PER_UNIT_TAIL = /\s*\d{1,3}\s*개당[^()]*$/;
+
+/** 머리의 수량 라벨 ("[50개] 양말" → 50개를 구성 필드로). */
+const QTY_HEAD_BRACKET = /^\[(\d{1,3}(?:,\d{3})*(?:\s*[+x×]\s*\d{1,3})?\s*(?:통|개|박스|팩|병|캔|매|세트|입|수|장|쌍|켤레|포|정|권)?|[+]\s*\d{1,3})\]\s*/;
+
+export function splitNameParts(display: string): NameParts {
+  let main = display.trim();
+  const parts: string[] = [];
+
+  const head = main.match(QTY_HEAD_BRACKET);
+  if (head) {
+    parts.push(head[1].trim());
+    main = main.slice(head[0].length);
+  }
+
+  /* 꼬리 체인 — "2통(총5kg) 1개당 2.5kg"처럼 연달아 붙은 구성을
+     전부 벗겨낸다. 단위당 표기가 수치 꼬리를 포함하므로 가장
+     먼저 매칭한다. */
+  for (let i = 0; i < 4; i++) {
+    const m = main.match(PER_UNIT_TAIL) ?? main.match(
+      COUNT_TAIL,
+    ) ?? main.match(WEIGHT_TAIL) ?? main.match(PLUS_DEAL_TAIL);
+
+    if (!m) break;
+
+    parts.unshift(m[0].trim());
+    main = main.slice(0, m.index).trim();
+  }
+
+  /* 과분리 방지: 본체가 너무 짧아지면 분리하지 않은 것만 못하다. */
+  if (main.length < 2) {
+    return { main: display.trim(), quantity: null };
+  }
+
+  return {
+    main,
+    quantity: parts.length > 0 ? parts.join(" · ") : null,
+  };
+}

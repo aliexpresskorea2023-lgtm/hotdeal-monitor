@@ -1,9 +1,12 @@
 import { getDealFeed, hotScore, type ItemView } from "@/src/db/queries";
 import {
   CATEGORIES,
+  COMMUNITIES,
+  COMMUNITY_LOGOS,
   OTHER_STORE_FILTER,
   STORE_FILTER_LOGOS,
   STORE_FILTERS,
+  type Community,
   type NormCategory,
 } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
@@ -41,6 +44,13 @@ function storeLogo(storeNorm: string | null): string {
   return STORE_FILTER_LOGOS[OTHER_STORE_FILTER];
 }
 
+/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 2순위. */
+function communityLogo(source: string): string | null {
+  return (COMMUNITIES as readonly string[]).includes(source)
+    ? COMMUNITY_LOGOS[source as Community]
+    : null;
+}
+
 function commentsSum(item: ItemView): number {
   return item.sources.reduce((sum, s) => sum + (s.stats.comments ?? 0), 0);
 }
@@ -54,6 +64,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
 
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
+  const rawCommunity = firstParam(raw.community);
 
   const category: NormCategory | null = (
     CATEGORIES as readonly string[]
@@ -66,8 +77,13 @@ export default async function RankingPage({ searchParams }: PageProps) {
       rawStore === OTHER_STORE_FILTER)
       ? rawStore
       : null;
+  const community =
+    rawCommunity &&
+    (COMMUNITIES as readonly string[]).includes(rawCommunity)
+      ? rawCommunity
+      : null;
 
-  const { items, hasData } = getDealFeed({ category, store });
+  const { items, hasData } = getDealFeed({ category, store, community });
 
   const ranked = [...items]
     .sort((a, b) => hotScore(b) - hotScore(a))
@@ -77,6 +93,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
   const current: Record<string, string> = {};
   if (category) current.cat = category;
   if (store) current.store = store;
+  if (community) current.community = community;
 
   return (
     <>
@@ -127,6 +144,27 @@ export default async function RankingPage({ searchParams }: PageProps) {
             </a>
           ))}
         </div>
+
+        <div className="frow">
+          <span className="flabel">커뮤니티</span>
+          <a
+            className={community === null ? "fchip logo active" : "fchip logo"}
+            href={hrefFor("/ranking", current, { community: null })}
+            title="전체"
+          >
+            <img src={STORE_FILTER_LOGOS["전체"]} alt="전체" />
+          </a>
+          {COMMUNITIES.map((com) => (
+            <a
+              key={com}
+              className={community === com ? "fchip logo active" : "fchip logo"}
+              href={hrefFor("/ranking", current, { community: com })}
+              title={sourceLabel(com)}
+            >
+              <img src={COMMUNITY_LOGOS[com]} alt={sourceLabel(com)} />
+            </a>
+          ))}
+        </div>
       </section>
 
       {!hasData || ranked.length === 0 ? (
@@ -171,7 +209,14 @@ export default async function RankingPage({ searchParams }: PageProps) {
                 <span className={badgeClass}>{rank}</span>
 
                 <div className="thumb sm">
-                  <img src={item.imageUrl ?? logo} alt={item.storeNorm} />
+                  <img
+                    src={
+                      item.imageUrl ??
+                      communityLogo(item.firstSource.source) ??
+                      logo
+                    }
+                    alt={item.storeNorm}
+                  />
                 </div>
 
                 <div className="row-grow">
@@ -186,7 +231,18 @@ export default async function RankingPage({ searchParams }: PageProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {item.displayName ?? item.firstSource.title}
+                    {item.displayParts ? (
+                      <>
+                        {item.displayParts.main}
+                        {item.displayParts.quantity && (
+                          <span className="name-qty">
+                            {item.displayParts.quantity}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      item.displayName ?? item.firstSource.title
+                    )}
                   </a>
                 </div>
 
@@ -196,10 +252,15 @@ export default async function RankingPage({ searchParams }: PageProps) {
                   </span>
                 </div>
 
-                <div className="c-score">
-                  <span className="score-num">
-                    {formatNumber(viewsSum(item))}
-                  </span>
+                <div
+                  className="c-score"
+                  title={`조회수 ${formatNumber(viewsSum(item))} · 추천 ${formatNumber(
+                    item.sources.reduce(
+                      (sum, s) => sum + (s.stats.recommendations ?? 0),
+                      0,
+                    ),
+                  )} · 댓글 ${formatNumber(commentsSum(item))}`}
+                >
                   <div className="score-bar">
                     <i style={{ width: `${pct}%` }} />
                   </div>

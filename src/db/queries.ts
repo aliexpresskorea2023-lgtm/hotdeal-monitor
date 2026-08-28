@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
-import { cleanDisplayName } from "../lib/name";
+import { cleanDisplayName, splitNameParts, type NameParts } from "../lib/name";
 import {
   isOtherStore,
   normalizeCategory,
@@ -86,6 +86,12 @@ export interface ItemView {
    * 정제 결과가 비면 원본으로 폴백.
    */
   displayName: string | null;
+  /**
+   * 정제 이름의 필드 분리 결과 (본체 + 구성/수량).
+   * 커머스 상품명 등록 관례대로 없는 필드는 노출하지 않는다.
+   * 이름이 없으면(게시글 제목 폴백 표시) null.
+   */
+  displayParts: NameParts | null;
   /** 출처들 중 대표 통화 기준 최저가 */
   price: number | null;
   currency: string;
@@ -120,7 +126,7 @@ export interface ItemView {
   sources: ItemSourceView[];
   /**
    * 상품 썸네일 (product_images 캐시에서 조회).
-   * 없으면 표시 계층에서 스토어 로고로 폴백.
+   * 없으면 표시 계층에서 원문 커뮤니티 로고 → 스토어 로고로 폴백.
    */
   imageUrl: string | null;
 }
@@ -341,11 +347,14 @@ function buildItem(key: string, members: Member[]): ItemView {
       ),
   )[0];
 
+  const displayName = cleanDisplayName(named.name, storeNorm);
+
   return {
     key,
     merged: sources.length >= 2,
     name: named.name,
-    displayName: cleanDisplayName(named.name, storeNorm),
+    displayName,
+    displayParts: displayName ? splitNameParts(displayName) : null,
     price,
     currency,
     priceText,
@@ -393,6 +402,8 @@ export interface FeedOptions {
   category?: NormCategory | null;
   /** 스토어 대표 표기 필터 */
   store?: string | null;
+  /** 출처 커뮤니티 필터 (fmkorea/ppomppu/ruliweb/quasarzone/arca) */
+  community?: string | null;
   /**
    * 상태 필터. active는 진행중+상태 모름을 포함한다
    * (임시 정책: 상태 모름은 진행중으로 노출).
@@ -577,6 +588,12 @@ export function getDealFeed(
         options.store === OTHER_STORE_FILTER
           ? items.filter((i) => isOtherStore(i.storeNorm))
           : items.filter((i) => i.storeNorm === options.store);
+    }
+
+    if (options.community) {
+      /* 출처 중 하나라도 해당 커뮤니티에서 온 아이템만. */
+      const com = options.community;
+      items = items.filter((i) => i.sources.some((s) => s.source === com));
     }
 
     if (options.status === "active") {

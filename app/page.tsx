@@ -2,9 +2,12 @@ import { Eye, MessageCircle } from "lucide-react";
 import { getDealFeed, type ItemView } from "@/src/db/queries";
 import {
   CATEGORIES,
+  COMMUNITIES,
+  COMMUNITY_LOGOS,
   OTHER_STORE_FILTER,
   STORE_FILTER_LOGOS,
   STORE_FILTERS,
+  type Community,
   type NormCategory,
 } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
@@ -47,6 +50,13 @@ function storeLogo(storeNorm: string | null): string {
     return STORE_FILTER_LOGOS[storeNorm];
   }
   return STORE_FILTER_LOGOS[OTHER_STORE_FILTER];
+}
+
+/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 2순위. */
+function communityLogo(source: string): string | null {
+  return (COMMUNITIES as readonly string[]).includes(source)
+    ? COMMUNITY_LOGOS[source as Community]
+    : null;
 }
 
 function statSums(item: ItemView) {
@@ -92,7 +102,14 @@ function DealRow({ item }: { item: ItemView }) {
       className={item.status === "ended" ? "deal-row ended" : "deal-row"}
     >
       <div className="thumb">
-        <img src={logo} alt={item.storeNorm} />
+        <img
+          src={
+            item.imageUrl ??
+            communityLogo(item.firstSource.source) ??
+            logo
+          }
+          alt={item.storeNorm}
+        />
       </div>
 
       <div className="row-grow">
@@ -107,7 +124,16 @@ function DealRow({ item }: { item: ItemView }) {
           target="_blank"
           rel="noopener noreferrer"
         >
-          {item.displayName ?? item.firstSource.title}
+          {item.displayParts ? (
+            <>
+              {item.displayParts.main}
+              {item.displayParts.quantity && (
+                <span className="name-qty">{item.displayParts.quantity}</span>
+              )}
+            </>
+          ) : (
+            item.displayName ?? item.firstSource.title
+          )}
         </a>
 
         <div className="tagrow">
@@ -184,6 +210,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
+  const rawCommunity = firstParam(raw.community);
   const rawStatus = firstParam(raw.status);
   const rawSort = firstParam(raw.sort);
   const rawQ = firstParam(raw.q)?.trim() || null;
@@ -203,6 +230,11 @@ export default async function Home({ searchParams }: PageProps) {
       rawStore === OTHER_STORE_FILTER)
       ? rawStore
       : null;
+  const community =
+    rawCommunity &&
+    (COMMUNITIES as readonly string[]).includes(rawCommunity)
+      ? rawCommunity
+      : null;
   const status =
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const sort = rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
@@ -210,6 +242,7 @@ export default async function Home({ searchParams }: PageProps) {
   const { items, hasData, lastIngestedAt } = getDealFeed({
     category,
     store,
+    community,
     status,
     sort,
     q: rawQ,
@@ -218,6 +251,7 @@ export default async function Home({ searchParams }: PageProps) {
   const current: Record<string, string> = {};
   if (category) current.cat = category;
   if (store) current.store = store;
+  if (community) current.community = community;
   if (status !== "all") current.status = status;
   if (sort !== "latest") current.sort = sort;
   if (rawQ) current.q = rawQ;
@@ -249,6 +283,9 @@ export default async function Home({ searchParams }: PageProps) {
         <form className="searchbar" action="/" method="get" role="search">
           {category && <input type="hidden" name="cat" value={category} />}
           {store && <input type="hidden" name="store" value={store} />}
+          {community && (
+            <input type="hidden" name="community" value={community} />
+          )}
           {status !== "all" && (
             <input type="hidden" name="status" value={status} />
           )}
@@ -315,6 +352,27 @@ export default async function Home({ searchParams }: PageProps) {
               title={name}
             >
               <img src={STORE_FILTER_LOGOS[name]} alt={name} />
+            </a>
+          ))}
+        </div>
+
+        <div className="frow">
+          <span className="flabel">커뮤니티</span>
+          <a
+            className={community === null ? "fchip logo active" : "fchip logo"}
+            href={hrefFor("/", current, { community: null })}
+            title="전체"
+          >
+            <img src={STORE_FILTER_LOGOS["전체"]} alt="전체" />
+          </a>
+          {COMMUNITIES.map((com) => (
+            <a
+              key={com}
+              className={community === com ? "fchip logo active" : "fchip logo"}
+              href={hrefFor("/", current, { community: com })}
+              title={sourceLabel(com)}
+            >
+              <img src={COMMUNITY_LOGOS[com]} alt={sourceLabel(com)} />
             </a>
           ))}
         </div>
