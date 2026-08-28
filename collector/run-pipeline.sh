@@ -1,6 +1,6 @@
 #!/bin/bash
 # hotdeal-monitor 주기 수집 파이프라인:
-#   collect (Python) → ingest (TS) → thumbnails (og:image) → deploy (git + Vercel)
+#   collect (Python) → ingest (TS) → thumbnails (og:image) → deploy (git promote)
 #
 # 동작 원칙:
 # - collect가 일부 커뮤니티 차단으로 exit 1을 내도 부분 수집분은 가치가
@@ -8,9 +8,12 @@
 #   이전 run의 미적재 스냅샷을 ingest가 따라잡을 수 있으므로 계속 진행한다.
 # - 배포는 ingest가 성공한 경우에만 실행한다. 먼저 DB를 롤백 저널
 #   모드로 고정하고(서버리스 읽기 전용 파일시스템에서 열리도록),
-#   스냅샷을 커밋·푸시한 뒤 `vercel deploy --prod`로 프로덕션에
-#   반영한다(수집 주기 = 배포 주기). 배포 실패는 수집 자체의 실패와
-#   분리해 기록하되 종료코드로 전파한다.
+#   스냅샷을 커밋·푸시한 뒤 해당 커밋으로 빌드된 git 배포를
+#   프로덕션으로 promote한다(수집 주기 = 배포 주기).
+#   `vercel deploy` CLI 업로드 방식은 로컬 next dev/start가 freeze 직후
+#   헤더를 WAL로 되돌리는 레이스에서 지면 WAL 파일이 그대로 배포돼
+#   프로덕션 CANTOPEN이 나므로(2026-08-28 실측) 기본 경로로 쓰지 않는다.
+#   git 통합이 없거나 git 배포 빌드가 실패하면 CLI 업로드로 폴백한다.
 # - 스크립트 위치 기준으로 프로젝트 루트를 해석해서 어디서 실행해도 안전하다
 #   (launchd는 CWD=/ 로 실행함).
 # - mkdir 기반 잠금으로 중복 실행을 막는다. 이전 실행이 아직 살아 있으면
@@ -19,6 +22,9 @@
 # 사용법:
 #   collector/run-pipeline.sh [collect.py 옵션 그대로 전달]
 #   예) collector/run-pipeline.sh --pages 1 --max-details 40
+#   collector/run-pipeline.sh deploy-only
+#     — 수집 없이 4단계(동결→커밋·푸시→git 배포 promote)만 실행.
+#       어드민 수정분을 주기 배포 전에 즉시 반영할 때 쓴다.
 #
 # 로그: data/logs/pipeline.log (append), 실행별 타임스탬프 헤더 포함.
 
@@ -48,8 +54,15 @@ log() { echo "$(ts) $*" | tee -a "$LOG_FILE"; }
 log "===== pipeline 시작 (pid $$) ====="
 log "인자: $*"
 
+MODE="full"
+if [[ "${1:-}" == "deploy-only" ]]; then
+  MODE="deploy-only"
+  shift
+  log "모드: deploy-only — 수집 생략, 배포 단계만 실행"
+fi
+
 # ---- 전제 조건 확인 --------------------------------------
-if [[ ! -x "$PYTHON" ]]; then
+if [[ "$MODE" == "full" && ! -x "$PYTHON" ]]; then
   log "오류: venv python이 없습니다 ($PYTHON). 'python3 -m venv collector/.venv && collector/.venv/bin/pip install -r collector/requirements.txt' 필요."
   exit 1
 fi
@@ -63,6 +76,7 @@ fi
 # 하루 첫(08시)·마지막(22시) 크롤링에서는 종료된 딜 전체를 재검증하는
 # 스윕(--sweep-ended)을 함께 돌린다 — 재개장된 딜을 되살리기 위함.
 # (launchd 스케줄: 08~22시 2시간 주기)
+if [[ "$MODE" == "full" ]]; then
 SWEEP=""
 HOUR="$(date +%H)"
 if [[ "$HOUR" == "08" || "$HOUR" == "22" ]]; then
@@ -100,56 +114,131 @@ if [[ "$ingest_rc" -eq 0 ]]; then
 else
   log "[3/4] 썸네일 수집 생략 (ingest 실패)"
 fi
+else
+  collect_rc=0
+  ingest_rc=0
+fi
 
 # ---- 4단계: deploy (ingest 성공 시에만) ------------------
-# 4a. DB 스냅샷 커밋·푸시 — 리포가 배포 데이터의 백업 역할도 한다.
-# 4b. vercel deploy --prod — 커밋 여부와 무관하게 현재 작업 트리를
-#     업로드하므로 데이터 갱신이 바로 반영된다.
+# 4a. freeze(WAL → 롤백 저널) + 헤더 검증.
+# 4b. 커밋·푸시 — 리포가 배포 데이터의 백업 역할도 한다. 커밋 후
+#     blob 헤더가 롤백(0101)인지 검증하고, 로컬 서버와의 레이스로
+#     WAL이 섞였으면 재동결 후 한 번 더 커밋한다.
+# 4c. 해당 커밋으로 빌드된 git 배포를 프로덕션으로 promote
+#     (레이스 안전 기본 경로). git 배포가 READY 되지 않으면
+#     CLI 업로드로 폴백한다.
 deploy_rc=0
 if [[ "$ingest_rc" -eq 0 ]]; then
   log "[4/4] deploy 단계 시작"
-
-  # 4a. 배포용 스냅샷 고정: WAL → 롤백 저널.
-  # Vercel serverless는 읽기 전용 파일시스템이라 WAL의 -shm 보조
-  # 파일을 만들지 못한다 — 보조 파일이 필요 없는 단일 파일 모드로
-  # 전환해야 서버리스에서 DB가 열린다. 실패 시 예전 방식(보조 파일
-  # 포함 업로드)으로 동작하므로 중단하지 않는다.
-  if npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1; then
-    log "[4/4] DB 스냅샷 고정(롤백 저널) 완료"
-  else
-    log "[4/4] DB 스냅샷 고정 실패 — 현재 상태 그대로 배포 진행"
-  fi
-
-  if command -v git >/dev/null 2>&1; then
-    git add data/hotdeal.db 2>/dev/null
-    if ! git diff --cached --quiet -- data/hotdeal.db 2>/dev/null; then
-      if git commit -m "데이터 스냅샷: $(ts) (auto)" -- data/hotdeal.db >>"$LOG_FILE" 2>&1 \
-         && git push origin HEAD >>"$LOG_FILE" 2>&1; then
-        log "[4/4] DB 스냅샷 커밋·푸시 완료"
-      else
-        log "[4/4] DB 커밋·푸시 실패 — 배포는 계속 진행"
-      fi
-    else
-      log "[4/4] DB 변경 없음 — 커밋 생략"
-    fi
-  else
-    log "[4/4] git 없음 — 커밋 생략"
-  fi
 
   VERCEL="$(command -v vercel 2>/dev/null || true)"
   if [[ -z "$VERCEL" && -x /Users/beomjun/.nvm/versions/node/v22.22.2/bin/vercel ]]; then
     VERCEL=/Users/beomjun/.nvm/versions/node/v22.22.2/bin/vercel
   fi
 
-  if [[ -n "$VERCEL" ]]; then
-    if "$VERCEL" deploy --prod --yes >>"$LOG_FILE" 2>&1; then
-      log "[4/4] Vercel 프로덕션 배포 완료"
+  # 4a+4b. freeze → 헤더 검증 → 커밋·푸시 (최소 1, WAL 혼입 시 1회 재시도)
+  pushed_sha=""
+  for attempt in 1 2; do
+    if npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1; then
+      log "[4/4] DB 스냅샷 고정(롤백 저널) 완료"
+    else
+      log "[4/4] DB 스냅샷 고정 실패 — 커밋은 그대로 진행"
+    fi
+
+    if ! command -v git >/dev/null 2>&1; then
+      log "[4/4] git 없음 — 커밋 생략"
+      break
+    fi
+
+    git add data/hotdeal.db 2>/dev/null
+    if git diff --cached --quiet -- data/hotdeal.db 2>/dev/null; then
+      log "[4/4] DB 변경 없음 — 커밋 생략"
+      pushed_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+      break
+    fi
+
+    if git commit -m "데이터 스냅샷: $(ts) (auto)" -- data/hotdeal.db >>"$LOG_FILE" 2>&1; then
+      blob_hdr="$(git show HEAD:data/hotdeal.db 2>/dev/null | xxd -p -l 2 -s 18)"
+      if [[ "$blob_hdr" != "0101" ]]; then
+        log "[4/4] 커밋 blob에 WAL 헤더 혼입($blob_hdr) — 재고정 후 재시도"
+        continue
+      fi
+      pushed_sha="$(git rev-parse HEAD)"
+      if git push origin HEAD >>"$LOG_FILE" 2>&1; then
+        log "[4/4] DB 스냅샷 커밋·푸시 완료"
+      else
+        log "[4/4] push 실패 — 커밋된 스냅샷으로 배포는 진행"
+      fi
+    else
+      log "[4/4] 커밋 실패 — 배포는 계속 진행"
+    fi
+    break
+  done
+
+  # 4c. git 배포 promote (레이스 안전 기본 경로)
+  git_deploy_id=""
+  if [[ -n "$pushed_sha" ]]; then
+    PROJECT_JSON="$ROOT/.vercel/project.json"
+    AUTH_JSON="$HOME/Library/Application Support/com.vercel.cli/auth.json"
+    VTOKEN="" VTEAM="" VPROJ=""
+    if [[ -f "$PROJECT_JSON" && -f "$AUTH_JSON" ]] && command -v python3 >/dev/null 2>&1; then
+      VTOKEN="$(python3 -c "import json;print(json.load(open('$AUTH_JSON'))['token'])" 2>/dev/null || true)"
+      VTEAM="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['orgId'])" 2>/dev/null || true)"
+      VPROJ="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['projectId'])" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$VTOKEN" && -n "$VTEAM" && -n "$VPROJ" ]]; then
+      # git 배포 빌드는 통상 1~3분 — 15초 간격으로 최대 6분 대기.
+      for i in $(seq 1 24); do
+        read -r dep_id dep_state < <(SHA="$pushed_sha" curl -s -H "Authorization: Bearer $VTOKEN" \
+            "https://api.vercel.com/v6/deployments?teamId=$VTEAM&projectId=$VPROJ&limit=6" \
+          | SHA="$pushed_sha" python3 -c "
+import json, os, sys
+sha = os.environ['SHA']
+for d in json.load(sys.stdin).get('deployments', []):
+    if (d.get('gitSource') or {}).get('sha') == sha:
+        print(d.get('uid'), d.get('readyState'))
+        break
+" 2>/dev/null)
+        if [[ "$dep_state" == "READY" ]]; then
+          git_deploy_id="$dep_id"
+          break
+        fi
+        if [[ "$dep_state" == "ERROR" || "$dep_state" == "CANCELED" ]]; then
+          log "[4/4] git 배포 $dep_state — CLI 폴백으로 전환"
+          break
+        fi
+        log "[4/4] git 배포 빌드 대기 ($i/24, ${dep_state:-BUILDING})"
+        sleep 15
+      done
+    else
+      log "[4/4] Vercel 인증/프로젝트 정보 없음 — CLI 폴백으로 전환"
+    fi
+  fi
+
+  if [[ -n "$git_deploy_id" && -n "$VERCEL" ]]; then
+    if "$VERCEL" promote "$git_deploy_id" --yes >>"$LOG_FILE" 2>&1; then
+      log "[4/4] 프로덕션 promote 완료 (git 배포 $git_deploy_id)"
     else
       deploy_rc=$?
-      log "[4/4] Vercel 배포 실패 (exit $deploy_rc)"
+      log "[4/4] promote 실패 (exit $deploy_rc) — CLI 폴백으로 전환"
+      git_deploy_id=""
     fi
-  else
-    log "[4/4] vercel CLI 없음 — 배포 생략"
+  fi
+
+  # 폴백: 기존 CLI 업로드(직전 재고정으로 레이스 창 최소화)
+  if [[ -z "$git_deploy_id" ]]; then
+    if [[ -n "$VERCEL" ]]; then
+      npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1 || true
+      if "$VERCEL" deploy --prod --yes >>"$LOG_FILE" 2>&1; then
+        log "[4/4] Vercel 프로덕션 배포 완료 (CLI 폴백)"
+      else
+        deploy_rc=$?
+        log "[4/4] Vercel 배포 실패 (exit $deploy_rc)"
+      fi
+    else
+      log "[4/4] vercel CLI 없음 — 배포 생략"
+    fi
   fi
 else
   log "[4/4] deploy 생략 (ingest 실패)"

@@ -207,7 +207,7 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 
 ### 배포 파이프라인 (2026-08-27) — 수집 주기 = 배포 주기
 
-`run-pipeline.sh` 4단계가 자동 배포로 이어진다: ingest 성공 시 ① `scripts/freeze-db.ts`로 DB 스냅샷 고정 ② `data/hotdeal.db` 커밋·푸시(리포=백업) ③ `vercel deploy --prod --yes`. 배포 실패는 수집 실패와 분리해 로그·종료코드 전파.
+`run-pipeline.sh` 4단계가 자동 배포로 이어진다: ingest 성공 시 ① `scripts/freeze-db.ts`로 DB 스냅샷 고정 ② `data/hotdeal.db` 커밋·푸시(리포=백업, 커밋 blob 헤더 검증으로 WAL 혼입 시 1회 재시도) ③ 해당 커밋으로 빌드된 git 배포를 프로덕션으로 promote(2026-08-28 전환 — CLI 업로드는 로컬 서버와의 WAL 레이스로 사고 이력, git 배포 불가·실패 시에만 폴백). `deploy-only` 인자로 수집 없이 배포 단계만 실행 가능 — 어드민 수정분을 2시간 주기 전에 즉시 반영할 때 사용. 배포 실패는 수집 실패와 분리해 로그·종료코드 전파.
 
 **절대 규칙 — 배포 전 `freeze-db.ts`(WAL → 롤백 저널)를 반드시 거쳐야 한다.** 실측 장애(2026-08-27): WAL 모드 DB를 읽기 전용으로 열려면 `-shm` 보조 파일이 필요한데, 보조 파일 없이 `hotdeal.db`만 배포되자 읽기 전용 파일시스템인 Vercel serverless에서 `unable to open database file`(CANTOPEN)로 전 페이지가 죽었다. 보조 파일이 함께 업로드된 과거 배포는 우연히 동작했던 것. 롤백 저널(`PRAGMA journal_mode=DELETE`) DB는 단일 파일로 읽기 전용 열람이 가능하다. 로컬 운영은 영향 없음 — `openDb()`가 수집 시 다시 WAL로 전환한다. 수동 배포 시에도 `npx tsx scripts/freeze-db.ts`를 먼저 실행할 것.
 
