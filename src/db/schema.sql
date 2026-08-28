@@ -197,3 +197,61 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   old_value TEXT,
   new_value TEXT
 );
+
+-- ── 네이버 쇼핑 키워드 트렌드 (2026-08-28, v1.7) ────────────────
+-- 출처: snxbest.naver.com 공식 주간 쇼핑 키워드 랭킹.
+-- 수집: collector/trends.py (차트 API + Google News RSS + 선택적으로
+-- 네이버 검색광고·YouTube) → 매니퍼스트 → scripts/ingest-trends.ts 적재.
+--
+-- 차트 2종: 'popular' = 인기 키워드 (당주차만 제공 — 주간 누적),
+--           'new' = 급상승 키워드 (사이트가 과거 주차 조회 지원).
+-- ymd는 사이트 주차 키 (YYYYMMDD, 주차 시작일).
+
+CREATE TABLE IF NOT EXISTS trend_weeks (
+  chart_type TEXT NOT NULL CHECK(chart_type IN ('popular', 'new')),
+  ymd TEXT NOT NULL,
+  month INTEGER,
+  week INTEGER,
+  collected_at TEXT NOT NULL,
+  PRIMARY KEY (chart_type, ymd)
+);
+
+CREATE TABLE IF NOT EXISTS trend_keywords (
+  id INTEGER PRIMARY KEY,
+  chart_type TEXT NOT NULL CHECK(chart_type IN ('popular', 'new')),
+  ymd TEXT NOT NULL,
+  -- 'A' = 전체, '50000000'.. = 카테고리 코드.
+  category_id TEXT NOT NULL,
+  category_name TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  keyword TEXT NOT NULL,
+  sub_title TEXT,
+  status TEXT NOT NULL DEFAULT 'STABLE'
+    CHECK(status IN ('STABLE', 'NEW', 'UP', 'DOWN', 'SOAR')),
+  -- 전주 대비 순위 변동폭 (사이트 제공).
+  fluctuation INTEGER NOT NULL DEFAULT 0,
+  sync_date TEXT,
+  rank_id TEXT,
+  UNIQUE(chart_type, ymd, category_id, rank)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trend_keywords_week
+  ON trend_keywords(chart_type, ymd);
+
+-- 키워드 부가 정보 — (주차, 키워드) 단위. 카테고리 무관이라 분리.
+-- 기사수는 Google News RSS(상한 100), 유튜브수는 Data API 추정치,
+-- 검색량은 네이버 검색광고 키워드도구 월간 쿼리수. 전부 널 허용.
+CREATE TABLE IF NOT EXISTS trend_enrichment (
+  ymd TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  news_count INTEGER,
+  -- 최근 기사 3건 [{title, source, date, link}] JSON.
+  news_sample TEXT,
+  news_fetched_at TEXT,
+  youtube_count INTEGER,
+  youtube_fetched_at TEXT,
+  monthly_pc_qc INTEGER,
+  monthly_mobile_qc INTEGER,
+  ads_fetched_at TEXT,
+  PRIMARY KEY (ymd, keyword)
+);

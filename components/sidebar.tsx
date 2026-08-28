@@ -10,6 +10,7 @@ import {
   ScrollText,
   Shapes,
   SquarePen,
+  TrendingUp,
   Trophy,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
@@ -27,6 +28,7 @@ const MENU = [
   { href: "/", label: "핫딜 모음", icon: Flame },
   { href: "/ranking", label: "핫딜 실시간 순위", icon: Trophy },
   { href: "/history", label: "최저가 히스토리", icon: ChartLine },
+  { href: "/trends", label: "네이버 키워드 트렌드", icon: TrendingUp },
 ] as const;
 
 const ADMIN_MENU = [

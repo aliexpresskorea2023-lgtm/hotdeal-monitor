@@ -1,6 +1,7 @@
 #!/bin/bash
 # hotdeal-monitor 주기 수집 파이프라인:
-#   collect (Python) → ingest (TS) → thumbnails (og:image) → deploy (git promote)
+#   collect (Python) → trends (Python) → ingest (TS) → thumbnails (og:image)
+#   → deploy (git promote)
 #
 # 동작 원칙:
 # - collect가 일부 커뮤니티 차단으로 exit 1을 내도 부분 수집분은 가치가
@@ -91,35 +92,55 @@ case "$collect_rc" in
   *) log "[1/4] collect 비정상 종료 (exit $collect_rc). 그래도 ingest는 실행" ;;
 esac
 
-# ---- 2단계: ingest --------------------------------------
-log "[2/4] ingest-crawls.ts 실행"
+# ---- 2단계: 키워드 트렌드 수집 (베스트 에포트) ---------------
+# snxbest.naver.com 주간 쇼핑 키워드 랭킹 + 기사수 등 보강.
+# 매니퍼스트는 3단계의 ingest-trends.ts가 적재한다.
+# 실패해도 핫딜 파이프라인과는 무관하므로 계속 진행한다.
+log "[2/5] trends.py 실행"
+if "$PYTHON" "$ROOT/collector/trends.py" >>"$LOG_FILE" 2>&1; then
+  log "[2/5] 키워드 트렌드 수집 완료"
+else
+  log "[2/5] 키워드 트렌드 수집 실패 — 계속 진행 (베스트 에포트)"
+fi
+
+# ---- 3단계: ingest --------------------------------------
+log "[3/5] ingest-crawls.ts 실행"
 npx tsx scripts/ingest-crawls.ts >>"$LOG_FILE" 2>&1
 ingest_rc=$?
 if [[ "$ingest_rc" -eq 0 ]]; then
-  log "[2/4] ingest 정상 종료"
+  log "[3/5] ingest 정상 종료"
 else
-  log "[2/4] ingest 실패 (exit $ingest_rc)"
+  log "[3/5] ingest 실패 (exit $ingest_rc)"
 fi
 
-# ---- 3단계: 썸네일 수집 (베스트 에포트) --------------------
+# 트렌드 매니퍼스트 적재 — 핫딜 적재와 독립적이라 실패해도
+# 파이프라인 게이트(ingest_rc)에는 영향을 주지 않는다.
+log "[3/5] ingest-trends.ts 실행"
+if npx tsx scripts/ingest-trends.ts >>"$LOG_FILE" 2>&1; then
+  log "[3/5] 트렌드 적재 완료"
+else
+  log "[3/5] 트렌드 적재 실패 — 계속 진행 (베스트 에포트)"
+fi
+
+# ---- 4단계: 썸네일 수집 (베스트 에포트) --------------------
 # 신규 상품 페이지에서 og:image 추출 — 캐시되어 실패는 3회까지만 재시도.
 # 실패해도 표시는 스토어 로고로 폴백되므로 파이프라인을 멈추지 않는다.
 if [[ "$ingest_rc" -eq 0 ]]; then
-  log "[3/4] fetch-thumbnails.ts 실행"
+  log "[4/5] fetch-thumbnails.ts 실행"
   if npx tsx scripts/fetch-thumbnails.ts --limit 40 >>"$LOG_FILE" 2>&1; then
-    log "[3/4] 썸네일 수집 완료"
+    log "[4/5] 썸네일 수집 완료"
   else
-    log "[3/4] 썸네일 수집 일부 실패 — 계속 진행"
+    log "[4/5] 썸네일 수집 일부 실패 — 계속 진행"
   fi
 else
-  log "[3/4] 썸네일 수집 생략 (ingest 실패)"
+  log "[4/5] 썸네일 수집 생략 (ingest 실패)"
 fi
 else
   collect_rc=0
   ingest_rc=0
 fi
 
-# ---- 4단계: deploy (ingest 성공 시에만) ------------------
+# ---- 5단계: deploy (ingest 성공 시에만) ------------------
 # 4a. freeze(WAL → 롤백 저널) + 헤더 검증.
 # 4b. 커밋·푸시 — 리포가 배포 데이터의 백업 역할도 한다. 커밋 후
 #     blob 헤더가 롤백(0101)인지 검증하고, 로컬 서버와의 레이스로
@@ -129,7 +150,7 @@ fi
 #     CLI 업로드로 폴백한다.
 deploy_rc=0
 if [[ "$ingest_rc" -eq 0 ]]; then
-  log "[4/4] deploy 단계 시작"
+  log "[5/5] deploy 단계 시작"
 
   VERCEL="$(command -v vercel 2>/dev/null || true)"
   if [[ -z "$VERCEL" && -x /Users/beomjun/.nvm/versions/node/v22.22.2/bin/vercel ]]; then
@@ -140,19 +161,19 @@ if [[ "$ingest_rc" -eq 0 ]]; then
   pushed_sha=""
   for attempt in 1 2; do
     if npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1; then
-      log "[4/4] DB 스냅샷 고정(롤백 저널) 완료"
+      log "[5/5] DB 스냅샷 고정(롤백 저널) 완료"
     else
-      log "[4/4] DB 스냅샷 고정 실패 — 커밋은 그대로 진행"
+      log "[5/5] DB 스냅샷 고정 실패 — 커밋은 그대로 진행"
     fi
 
     if ! command -v git >/dev/null 2>&1; then
-      log "[4/4] git 없음 — 커밋 생략"
+      log "[5/5] git 없음 — 커밋 생략"
       break
     fi
 
     git add data/hotdeal.db 2>/dev/null
     if git diff --cached --quiet -- data/hotdeal.db 2>/dev/null; then
-      log "[4/4] DB 변경 없음 — 커밋 생략"
+      log "[5/5] DB 변경 없음 — 커밋 생략"
       pushed_sha="$(git rev-parse HEAD 2>/dev/null || true)"
       break
     fi
@@ -160,17 +181,17 @@ if [[ "$ingest_rc" -eq 0 ]]; then
     if git commit -m "데이터 스냅샷: $(ts) (auto)" -- data/hotdeal.db >>"$LOG_FILE" 2>&1; then
       blob_hdr="$(git show HEAD:data/hotdeal.db 2>/dev/null | xxd -p -l 2 -s 18)"
       if [[ "$blob_hdr" != "0101" ]]; then
-        log "[4/4] 커밋 blob에 WAL 헤더 혼입($blob_hdr) — 재고정 후 재시도"
+        log "[5/5] 커밋 blob에 WAL 헤더 혼입($blob_hdr) — 재고정 후 재시도"
         continue
       fi
       pushed_sha="$(git rev-parse HEAD)"
       if git push origin HEAD >>"$LOG_FILE" 2>&1; then
-        log "[4/4] DB 스냅샷 커밋·푸시 완료"
+        log "[5/5] DB 스냅샷 커밋·푸시 완료"
       else
-        log "[4/4] push 실패 — 커밋된 스냅샷으로 배포는 진행"
+        log "[5/5] push 실패 — 커밋된 스냅샷으로 배포는 진행"
       fi
     else
-      log "[4/4] 커밋 실패 — 배포는 계속 진행"
+      log "[5/5] 커밋 실패 — 배포는 계속 진행"
     fi
     break
   done
@@ -206,23 +227,23 @@ for d in json.load(sys.stdin).get('deployments', []):
           break
         fi
         if [[ "$dep_state" == "ERROR" || "$dep_state" == "CANCELED" ]]; then
-          log "[4/4] git 배포 $dep_state — CLI 폴백으로 전환"
+          log "[5/5] git 배포 $dep_state — CLI 폴백으로 전환"
           break
         fi
-        log "[4/4] git 배포 빌드 대기 ($i/48, ${dep_state:-BUILDING})"
+        log "[5/5] git 배포 빌드 대기 ($i/48, ${dep_state:-BUILDING})"
         sleep 15
       done
     else
-      log "[4/4] Vercel 인증/프로젝트 정보 없음 — CLI 폴백으로 전환"
+      log "[5/5] Vercel 인증/프로젝트 정보 없음 — CLI 폴백으로 전환"
     fi
   fi
 
   if [[ -n "$git_deploy_id" && -n "$VERCEL" ]]; then
     if "$VERCEL" promote "$git_deploy_id" --yes >>"$LOG_FILE" 2>&1; then
-      log "[4/4] 프로덕션 promote 완료 (git 배포 $git_deploy_id)"
+      log "[5/5] 프로덕션 promote 완료 (git 배포 $git_deploy_id)"
     else
       deploy_rc=$?
-      log "[4/4] promote 실패 (exit $deploy_rc) — CLI 폴백으로 전환"
+      log "[5/5] promote 실패 (exit $deploy_rc) — CLI 폴백으로 전환"
       git_deploy_id=""
     fi
   fi
@@ -232,17 +253,17 @@ for d in json.load(sys.stdin).get('deployments', []):
     if [[ -n "$VERCEL" ]]; then
       npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1 || true
       if "$VERCEL" deploy --prod --yes >>"$LOG_FILE" 2>&1; then
-        log "[4/4] Vercel 프로덕션 배포 완료 (CLI 폴백)"
+        log "[5/5] Vercel 프로덕션 배포 완료 (CLI 폴백)"
       else
         deploy_rc=$?
-        log "[4/4] Vercel 배포 실패 (exit $deploy_rc)"
+        log "[5/5] Vercel 배포 실패 (exit $deploy_rc)"
       fi
     else
-      log "[4/4] vercel CLI 없음 — 배포 생략"
+      log "[5/5] vercel CLI 없음 — 배포 생략"
     fi
   fi
 else
-  log "[4/4] deploy 생략 (ingest 실패)"
+  log "[5/5] deploy 생략 (ingest 실패)"
 fi
 
 log "===== pipeline 종료 (collect=$collect_rc, ingest=$ingest_rc, deploy=$deploy_rc) ====="
