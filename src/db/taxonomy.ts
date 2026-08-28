@@ -213,10 +213,10 @@ export type Community = (typeof COMMUNITIES)[number];
 /** 칩 렌더링용 커뮤니티 로고 경로 (public/community-logos/). */
 export const COMMUNITY_LOGOS: Record<Community, string> = {
   fmkorea: "/community-logos/fmkorea.png",
-  ppomppu: "/community-logos/ppomppu.jpeg",
+  ppomppu: "/community-logos/ppomppu.png",
   ruliweb: "/community-logos/ruliweb.png",
   quasarzone: "/community-logos/quasarzone.png",
-  arca: "/community-logos/arca.jpeg",
+  arca: "/community-logos/arca.png",
 };
 
 

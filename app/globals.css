@@ -899,6 +899,20 @@ a {
   color: var(--muted-foreground);
 }
 
+/* 최고가·최저가 관측 시각 → 원문 게시글 링크 */
+.stat-card .sub a {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stat-card .sub a:hover {
+  color: var(--foreground);
+}
+
 .empty {
   border: 1px dashed var(--border);
   border-radius: 12px;

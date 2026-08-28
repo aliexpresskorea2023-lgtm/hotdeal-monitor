@@ -60,8 +60,16 @@ if ! command -v npx >/dev/null 2>&1; then
 fi
 
 # ---- 1단계: collect -------------------------------------
-log "[1/4] collect.py 실행"
-"$PYTHON" "$ROOT/collector/collect.py" "$@" >>"$LOG_FILE" 2>&1
+# 하루 첫(08시)·마지막(22시) 크롤링에서는 종료된 딜 전체를 재검증하는
+# 스윕(--sweep-ended)을 함께 돌린다 — 재개장된 딜을 되살리기 위함.
+# (launchd 스케줄: 08~22시 2시간 주기)
+SWEEP=""
+HOUR="$(date +%H)"
+if [[ "$HOUR" == "08" || "$HOUR" == "22" ]]; then
+  SWEEP="--sweep-ended"
+fi
+log "[1/4] collect.py 실행${SWEEP:+ (종료 스윕 포함)}"
+"$PYTHON" "$ROOT/collector/collect.py" $SWEEP "$@" >>"$LOG_FILE" 2>&1
 collect_rc=$?
 case "$collect_rc" in
   0) log "[1/4] collect 정상 종료 (exit 0)" ;;

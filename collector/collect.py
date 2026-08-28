@@ -136,6 +136,30 @@ def is_cloudflare_challenge(status: int, html: str) -> bool:
     return False
 
 
+# 삭제된 게시글 안내 문구. 사이트가 삭제/이동된 글 대신 보여주는
+# 작은 안내 페이지인데, Cloudflare 비콘 스크립트가 함께 심겨 있어
+# 챌린지 판별(작은 페이지 + CF 마커)에 오검출된다 — 챌린지 판정
+# 전에 이 검사로 먼저 걸러야 수집이 중단되지 않는다.
+GONE_POST_MARKERS = (
+    "글이 존재하지 않습니다",
+    "존재하지 않는 게시글",
+    "존재하지 않는 게시물",
+    "게시글이 존재하지 않습니다",
+    "삭제된 게시글",
+    "삭제된 게시물",
+    "해당 게시글이 없습니다",
+    "해당 게시물이 없습니다",
+)
+
+
+def is_gone_post(html: str) -> bool:
+    """삭제/이동으로 사라진 게시글의 안내 페이지 판별."""
+    if len(html) >= CHALLENGE_SMALL_PAGE_BYTES:
+        return False
+
+    return any(marker in html for marker in GONE_POST_MARKERS)
+
+
 def is_fmkorea_challenge(html: str) -> bool:
     """fmkorea 자체 WAF(보안 시스템/ddosCheckOnly) 판별."""
     return (
@@ -386,6 +410,10 @@ class RunStats:
     challenge: int = 0
     skipped_frozen: int = 0  # ended/폼미입력 — DB 동결로 재수집 생략
     skipped_recent: int = 0  # TTL 내 재확인 완료 — 재수집 생략
+    # 종료 딜 재검증 스윕 (--sweep-ended)
+    sweep_checked: int = 0
+    sweep_ok: int = 0
+    sweep_failed: int = 0
 
 
 def load_known_posts(
@@ -427,6 +455,139 @@ def load_known_posts(
         known[post_id] = (status, products_count, seen_at)
 
     return known
+
+
+def load_ended_posts(
+    db_path: str, community: str, limit: int
+) -> list[tuple[str, str]]:
+    """ended 상태 게시글 중 스윕 재검증 대상을 읽는다.
+
+    상품이 있는(products_count > 0) 글만 — 딜이 될 수 없는 글은
+    되살아나도 의미가 없다. 최근 확인순으로 정렬(최근 글일수록
+    재개장 가능성이 높다). 반환: [(post_id, url), ...].
+    """
+    if not Path(db_path).exists():
+        return []
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            rows = conn.execute(
+                "SELECT post_id, url FROM posts "
+                "WHERE community = ? AND status = 'ended' "
+                "  AND products_count > 0 "
+                "ORDER BY COALESCE(last_seen_at, '') DESC "
+                "LIMIT ?",
+                (community, limit),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as error:
+        log(f"종료 스윕 대상 읽기 실패({error}) — 스윕 생략.")
+        return []
+
+    return [(post_id, url) for post_id, url in rows]
+
+
+def sweep_ended_posts(
+    session: cffi_requests.Session,
+    cfg: CommunityConfig,
+    args: argparse.Namespace,
+    run_dir: Path,
+    entries: list[dict],
+    stats: RunStats,
+) -> None:
+    """종료 게시글 원문을 다시 받아 되살아난 딜이 있는지 재검증한다.
+
+    스냅샷은 일반 상세 수집과 동일한 형식(엔트리 + 커뮤니티 폴더
+    HTML)으로 저장되어 인제스트가 같은 파서로 재판정한다 — 페이지에
+    종료 신호가 사라졌으면 active/unknown으로 승격되고, 여전히
+    종료면 ended 유지. 차단·삭제(404)된 글은 ended 그대로 둔다.
+
+    스윕 중 챌린지가 뜨면 해당 커뮤니티 스윕만 중단한다 (목록 수집은
+    이미 끝난 뒤라 전체 run 상태를 뒤집지 않는다).
+    """
+    if args.no_db:
+        log("종료 스윕: --no-db 모드라 대상을 읽을 수 없어 생략.")
+        return
+
+    targets = load_ended_posts(args.db, cfg.name, args.sweep_limit)
+
+    if not targets:
+        return
+
+    out_dir = run_dir / cfg.name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    throttle = args.throttle if args.throttle else cfg.throttle_s
+
+    log(f"종료 스윕: {cfg.name} 종료 게시글 {len(targets)}건 재확인")
+
+    for post_id, url in targets:
+        stats.sweep_checked += 1
+        time.sleep(throttle)
+
+        entry: dict = {
+            "community": cfg.name,
+            "postId": post_id,
+            "url": url,
+            "collectedAt": now_iso(),
+            "sweep": True,
+        }
+
+        try:
+            res = session.get(url, headers=HEADERS, timeout=30)
+        except Exception as error:  # noqa: BLE001 — 스윕은 베스트 에포트
+            log(f"  [스윕 {post_id}] 요청 실패 ({error}) — 건너뜀.")
+            entry["httpStatus"] = 0
+            entry["challenge"] = False
+            entry["snapshot"] = None
+            entries.append(entry)
+            stats.sweep_failed += 1
+            continue
+
+        entry["httpStatus"] = res.status_code
+        html = cfg.decode(res.content)
+
+        if is_gone_post(html):
+            log(f"  [스윕 {post_id}] 삭제된 게시글 — 종료 유지.")
+            entry["challenge"] = False
+            entry["gone"] = True
+            entry["snapshot"] = None
+            entries.append(entry)
+            stats.sweep_failed += 1
+            continue
+
+        if cfg.is_challenge(res.status_code, html):
+            log(
+                f"  [스윕 {post_id}] 챌린지 감지 "
+                f"(HTTP {res.status_code}) — {cfg.name} 스윕 중단."
+            )
+            entry["challenge"] = True
+            entry["snapshot"] = None
+            entries.append(entry)
+            return
+
+        if res.status_code != 200:
+            log(f"  [스윕 {post_id}] HTTP {res.status_code} — 종료 유지.")
+            entry["challenge"] = False
+            entry["snapshot"] = None
+            entries.append(entry)
+            stats.sweep_failed += 1
+            continue
+
+        snap_path = out_dir / f"{post_id}.html"
+        snap_path.write_text(html, encoding="utf-8")
+
+        entry["challenge"] = False
+        entry["snapshot"] = f"{cfg.name}/{post_id}.html"
+        entry["bytes"] = len(res.content)
+        entries.append(entry)
+        stats.sweep_ok += 1
+
+    log(
+        f"종료 스윕 {cfg.name}: 확인 {stats.sweep_checked} / "
+        f"저장 {stats.sweep_ok} / 실패 {stats.sweep_failed}"
+    )
 
 
 def crawl_community(
@@ -540,6 +701,15 @@ def crawl_community(
 
         html = cfg.decode(res.content)
 
+        if is_gone_post(html):
+            log(f"  [{ref['id']}] 삭제된 게시글 — 동결 유지.")
+            entry["challenge"] = False
+            entry["gone"] = True
+            entry["snapshot"] = None
+            entries.append(entry)
+            stats.detail_failed += 1
+            continue
+
         if cfg.is_challenge(res.status_code, html):
             log(f"  [{ref['id']}] 챌린지 감지 (HTTP {res.status_code}) — 중단.")
             entry["challenge"] = True
@@ -628,6 +798,17 @@ def main() -> int:
         action="store_true",
         help="DB 동결/TTL 스킵을 무시하고 전부 재수집",
     )
+    parser.add_argument(
+        "--sweep-ended",
+        action="store_true",
+        help="종료 게시글 원문을 재수집해 재개장 여부 재검증",
+    )
+    parser.add_argument(
+        "--sweep-limit",
+        type=int,
+        default=500,
+        help="커뮤니티당 종료 스윕 최대 건수 (기본 500)",
+    )
     args = parser.parse_args()
 
     requested = [c.strip() for c in args.communities.split(",") if c.strip()]
@@ -658,6 +839,13 @@ def main() -> int:
             entries,
             args.throttle,
         )
+
+        # 종료 딜 재검증 — 목록 수집이 정상 종료된 커뮤니티만.
+        if args.sweep_ended and stats.status == "ok":
+            sweep_ended_posts(
+                session, COMMUNITIES[name], args, run_dir, entries, stats
+            )
+
         community_stats[name] = {
             "status": stats.status,
             "listFound": stats.list_found,
@@ -666,6 +854,9 @@ def main() -> int:
             "challenge": stats.challenge,
             "skippedFrozen": stats.skipped_frozen,
             "skippedRecent": stats.skipped_recent,
+            "sweepChecked": stats.sweep_checked,
+            "sweepOk": stats.sweep_ok,
+            "sweepFailed": stats.sweep_failed,
         }
 
     manifest = {
@@ -682,6 +873,8 @@ def main() -> int:
             "db": None if args.no_db else args.db,
             "recheckHours": args.recheck_hours,
             "force": args.force,
+            "sweepEnded": args.sweep_ended,
+            "sweepLimit": args.sweep_limit,
         },
         "communities": community_stats,
         "entries": entries,
@@ -698,6 +891,8 @@ def main() -> int:
     found = sum(s["listFound"] for s in community_stats.values())
     frozen = sum(s["skippedFrozen"] for s in community_stats.values())
     recent = sum(s["skippedRecent"] for s in community_stats.values())
+    sweep_ok = sum(s["sweepOk"] for s in community_stats.values())
+    sweep_checked = sum(s["sweepChecked"] for s in community_stats.values())
     blocked = [n for n, s in community_stats.items() if s["status"] == "blocked"]
 
     log("========== 요약 ==========")
@@ -706,11 +901,13 @@ def main() -> int:
             f"{name}: {s['status']} | 목록 {s['listFound']}개 발견 | "
             f"상세 ok={s['detailOk']} failed={s['detailFailed']} "
             f"challenge={s['challenge']} "
-            f"스킵(동결={s['skippedFrozen']}, 최근={s['skippedRecent']})"
+            f"스킵(동결={s['skippedFrozen']}, 최근={s['skippedRecent']}) "
+            f"스윕(확인={s['sweepChecked']}, 저장={s['sweepOk']})"
         )
     log(
         f"총 상세 저장: {ok}건 (목록 발견 {found}개, "
-        f"동결 스킵 {frozen}, 최근 스킵 {recent})"
+        f"동결 스킵 {frozen}, 최근 스킵 {recent}, "
+        f"종료 스윕 {sweep_ok}/{sweep_checked})"
     )
     if blocked:
         log(f"차단 감지 커뮤니티: {blocked}")

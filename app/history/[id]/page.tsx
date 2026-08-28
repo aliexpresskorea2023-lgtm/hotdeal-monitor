@@ -209,12 +209,36 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
         <div className="stat-card">
           <div className="lab">최고가</div>
           <div className="val">{highest !== null ? `${formatNumber(highest)}원` : "-"}</div>
-          <div className="sub">{pointDate(points, highest) ? formatTime(pointDate(points, highest)!) : ""}</div>
+          <div className="sub">
+            {pointDate(points, highest) && (
+              <a
+                href={item.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="이 가격이 적힌 원문 게시글"
+              >
+                {formatTime(pointDate(points, highest)!)}
+                <ExternalLink size={11} />
+              </a>
+            )}
+          </div>
         </div>
         <div className="stat-card">
           <div className="lab">최저가</div>
           <div className="val">{lowest !== null ? `${formatNumber(lowest)}원` : "-"}</div>
-          <div className="sub">{pointDate(points, lowest) ? formatTime(pointDate(points, lowest)!) : ""}</div>
+          <div className="sub">
+            {pointDate(points, lowest) && (
+              <a
+                href={item.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="이 가격이 적힌 원문 게시글"
+              >
+                {formatTime(pointDate(points, lowest)!)}
+                <ExternalLink size={11} />
+              </a>
+            )}
+          </div>
         </div>
         <div className="stat-card">
           <div className="lab">가격 변동</div>

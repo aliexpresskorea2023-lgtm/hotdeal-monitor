@@ -16,7 +16,10 @@ function formatKrw(value: number): string {
 }
 
 export function formatTime(dateString: string): string {
+  /* timeZone 고정 — 서버 타임존(로컬 Mac=KST, Vercel serverless=UTC)에
+   * 따라 표시가 달라지는 것을 막는다. 수집 시각은 전부 +09:00 저장. */
   return new Date(dateString).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
