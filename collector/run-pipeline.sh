@@ -122,6 +122,14 @@ else
   log "[3/5] 트렌드 적재 실패 — 계속 진행 (베스트 에포트)"
 fi
 
+# 트렌드 보관 주기 — 13주 롤링 (2026-08-28 결정). 옛 주차 삭제.
+log "[3/5] purge-old-trends.ts 실행"
+if npx tsx scripts/purge-old-trends.ts --keep-weeks 13 >>"$LOG_FILE" 2>&1; then
+  log "[3/5] 트렌드 보관 주기 정리 완료"
+else
+  log "[3/5] 트렌드 정리 실패 — 계속 진행 (베스트 에포트)"
+fi
+
 # ---- 4단계: 썸네일 수집 (베스트 에포트) --------------------
 # 신규 상품 페이지에서 og:image 추출 — 캐시되어 실패는 3회까지만 재시도.
 # 실패해도 표시는 스토어 로고로 폴백되므로 파이프라인을 멈추지 않는다.
@@ -200,12 +208,19 @@ if [[ "$ingest_rc" -eq 0 ]]; then
   git_deploy_id=""
   if [[ -n "$pushed_sha" ]]; then
     PROJECT_JSON="$ROOT/.vercel/project.json"
+    REPO_JSON="$ROOT/.vercel/repo.json"
     AUTH_JSON="$HOME/Library/Application Support/com.vercel.cli/auth.json"
     VTOKEN="" VTEAM="" VPROJ=""
-    if [[ -f "$PROJECT_JSON" && -f "$AUTH_JSON" ]] && command -v python3 >/dev/null 2>&1; then
+    if [[ -f "$AUTH_JSON" ]] && command -v python3 >/dev/null 2>&1; then
       VTOKEN="$(python3 -c "import json;print(json.load(open('$AUTH_JSON'))['token'])" 2>/dev/null || true)"
-      VTEAM="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['orgId'])" 2>/dev/null || true)"
-      VPROJ="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['projectId'])" 2>/dev/null || true)"
+      if [[ -f "$PROJECT_JSON" ]]; then
+        VTEAM="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['orgId'])" 2>/dev/null || true)"
+        VPROJ="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['projectId'])" 2>/dev/null || true)"
+      elif [[ -f "$REPO_JSON" ]]; then
+        # Vercel CLI 59.x는 project.json 대신 repo.json(projects[])에 링크를 저장한다.
+        VTEAM="$(python3 -c "import json;print(json.load(open('$REPO_JSON'))['projects'][0]['orgId'])" 2>/dev/null || true)"
+        VPROJ="$(python3 -c "import json;print(json.load(open('$REPO_JSON'))['projects'][0]['id'])" 2>/dev/null || true)"
+      fi
     fi
 
     if [[ -n "$VTOKEN" && -n "$VTEAM" && -n "$VPROJ" ]]; then
@@ -239,7 +254,7 @@ for d in json.load(sys.stdin).get('deployments', []):
   fi
 
   if [[ -n "$git_deploy_id" && -n "$VERCEL" ]]; then
-    if "$VERCEL" promote "$git_deploy_id" --yes >>"$LOG_FILE" 2>&1; then
+    if "$VERCEL" promote "$git_deploy_id" --yes --token "$VTOKEN" >>"$LOG_FILE" 2>&1; then
       log "[5/5] 프로덕션 promote 완료 (git 배포 $git_deploy_id)"
     else
       deploy_rc=$?
@@ -252,7 +267,7 @@ for d in json.load(sys.stdin).get('deployments', []):
   if [[ -z "$git_deploy_id" ]]; then
     if [[ -n "$VERCEL" ]]; then
       npx tsx scripts/freeze-db.ts >>"$LOG_FILE" 2>&1 || true
-      if "$VERCEL" deploy --prod --yes >>"$LOG_FILE" 2>&1; then
+      if "$VERCEL" deploy --prod --yes ${VTOKEN:+--token "$VTOKEN"} >>"$LOG_FILE" 2>&1; then
         log "[5/5] Vercel 프로덕션 배포 완료 (CLI 폴백)"
       else
         deploy_rc=$?

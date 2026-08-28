@@ -64,6 +64,12 @@ CATEGORIES = {
 
 SORT_TYPES = {"popular": "KEYWORD_POPULAR", "new": "KEYWORD_NEW"}
 
+# 보관 주기 — 최근 13주 롤링 (2026-08-28 결정).
+# 급상승 백필 상한을 이 값에 맞춰, 정리 스크립트
+# (scripts/purge-old-trends.ts)가 지운 옛 주차를 다음 수집에서
+# 다시 가져오는 왕복이 없도록 한다.
+KEEP_WEEKS = 13
+
 THROTTLE_RANK = 0.6
 THROTTLE_NEWS = 0.8
 THROTTLE_ADS = 0.5
@@ -524,12 +530,14 @@ def main() -> int:
     # 3) 급상승 키워드 — 미수집 주차 백필.
     # 급상승 차트는 사이트가 전체('A')만 제공한다 — 카테고리별
     # 데이터는 존재하지 않는다 (2026-08-28 실측).
+    # 수집 상한 = 보관 주기(최근 KEEP_WEEKS주) — 정리된 주차 재수집 방지.
+    new_ymds = period_ymds[-KEEP_WEEKS:]
     new_targets = sum(
-        1 for ymd in period_ymds if ("new", ymd, "A") not in state["complete"]
+        1 for ymd in new_ymds if ("new", ymd, "A") not in state["complete"]
     )
     log(f"급상승 수집 대상: {new_targets}건 (주차)")
 
-    for ymd in period_ymds:
+    for ymd in new_ymds:
         cat_id, cat_name = "A", CATEGORIES["A"]
         if ("new", ymd, cat_id) in state["complete"]:
             continue
