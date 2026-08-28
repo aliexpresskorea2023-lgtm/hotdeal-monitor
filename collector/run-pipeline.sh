@@ -196,7 +196,8 @@ if [[ "$ingest_rc" -eq 0 ]]; then
 import json, os, sys
 sha = os.environ['SHA']
 for d in json.load(sys.stdin).get('deployments', []):
-    if (d.get('gitSource') or {}).get('sha') == sha:
+    # 목록 API에는 gitSource가 없고 meta.githubCommitSha가 있다.
+    if d.get('source') == 'git' and (d.get('meta') or {}).get('githubCommitSha') == sha:
         print(d.get('uid'), d.get('readyState'))
         break
 " 2>/dev/null)
