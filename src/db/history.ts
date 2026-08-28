@@ -82,6 +82,7 @@ interface DealJoinRow {
   store: string | null;
   currency: string;
   product_url: string | null;
+  url_override: string | null;
   community: string;
   title: string;
   post_url: string;
@@ -151,7 +152,7 @@ export function getPriceHistory(
     const dealRows = db
       .prepare(
         `SELECT d.id AS deal_id, d.product_name, d.category, d.store,
-                d.currency, d.product_url,
+                d.currency, d.product_url, d.url_override,
                 p.community, p.title, p.url AS post_url,
                 p.status, p.last_seen_at
          FROM deals d
@@ -236,7 +237,7 @@ export function getPriceHistory(
         community: deal.community,
         postTitle: deal.title,
         sourceUrl: deal.post_url,
-        url: deal.product_url,
+        url: deal.url_override ?? deal.product_url,
         storeNorm,
         categoryNorm: normalizeCategory(
           deal.community,

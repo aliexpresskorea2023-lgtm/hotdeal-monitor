@@ -18,6 +18,7 @@ const DEAL_COLUMNS: Array<{ name: string; ddl: string }> = [
   { name: "price_override", ddl: "ALTER TABLE deals ADD COLUMN price_override REAL" },
   { name: "category_override", ddl: "ALTER TABLE deals ADD COLUMN category_override TEXT" },
   { name: "store_override", ddl: "ALTER TABLE deals ADD COLUMN store_override TEXT" },
+  { name: "url_override", ddl: "ALTER TABLE deals ADD COLUMN url_override TEXT" },
   { name: "hidden", ddl: "ALTER TABLE deals ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0" },
   { name: "excluded_reason", ddl: "ALTER TABLE deals ADD COLUMN excluded_reason TEXT" },
   {

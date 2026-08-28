@@ -62,6 +62,7 @@ export interface DealPatch {
   price_override?: number | null;
   category_override?: string | null;
   store_override?: string | null;
+  url_override?: string | null;
   hidden?: number;
 }
 
@@ -70,6 +71,7 @@ const DEAL_PATCH_FIELDS = [
   "price_override",
   "category_override",
   "store_override",
+  "url_override",
   "hidden",
 ] as const;
 
@@ -78,7 +80,7 @@ export function patchDeal(db: DatabaseSync, dealId: number, patch: DealPatch): v
   const current = db
     .prepare(
       `SELECT name_override, price_override, category_override,
-              store_override, hidden
+              store_override, url_override, hidden
        FROM deals WHERE id = ?`,
     )
     .get(dealId) as Record<string, string | number | null> | undefined;

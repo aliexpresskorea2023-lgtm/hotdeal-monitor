@@ -283,3 +283,9 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 **실측 병목과 해법**: ① `.row-title`의 `white-space: nowrap`이 flex min-content를 526px까지 늘려 레이아웃 뷰포트를 확장 → 모바일에서 2줄 `-webkit-line-clamp`. ② `.shell`이 `min-height:100vh` 그리드라 짧은 페이지(히스토리 상세)에서 남는 높이가 auto 행인 상단바를 늘리는 버그 → 모바일 `grid-template-rows: auto minmax(0,1fr)`로 main이 흡수. ③ 상세 헤드는 `.detail-rail`(flex:none)이 제목을 2px로 압축 → `flex-wrap` + 레일을 `flex:1 1 100%`로 아래 한 줄(현재가 좌측·상품 보기 우측). ④ 랭킹 로우는 `grid-template-areas` 2행 재배치(badge/thumb/title + link/price), 히스토리 카드는 스파크·가격을 둘째 줄로. ⑤ 어드민 테이블은 `display:block; overflow-x:auto` 폴백.
 
 **검증 방법**: playwright-core + 시스템 Chrome(`channel:"chrome"`)으로 390×844(deviceScaleFactor 2) 스크린샷 + `scrollWidth===innerWidth` 체크. 데스크톱(1280px) 회귀도 함께 촬영 — 모바일 규칙은 전부 미디어 블록 안이라 데스크톱 불변.
+
+### v1.6 랭킹 24시간 신선도 규칙 + 어드민 구매링크 오버라이드 (2026-08-28)
+
+**랭킹 24시간 규칙**: 핫딜 실시간 순위(/ranking)는 등록된 지 24시간이 지난 딜을 집계에서 제외한다. 판정은 `itemAgeMs()`(`src/db/queries.ts`) — 가장 이른 출처 게시 시각 기준, 게시 시각이 없으면 첫 적재 시각으로 폴백하고, 시각 파싱 실패는 0(신규 취급)으로 돌려 이상 데이터로 잘못 제외되는 것을 막는다. 묵은 바이럴 딜이 점수 누적만으로 상위권을 영구 점유하는 문제를 차단. 실측: 적용 전 TOP10 중 7건이 24시간 초과(최대 68시간) → 적용 후 전부 24시간 이내.
+
+**어드민 구매링크 오버라이드** (`deals.url_override`): 카드 관리 편집기에 구매링크 필드 추가. 오버라이드 레이어 원칙 그대로 — 파서 컬럼(`product_url`)은 수집기가 계속 갱신하고 수동 값만 `url_override`에 기록. API(`/api/admin/deal/[id]` PATCH)에서 `http(s)://` 외 값은 400 거부, 빈 값은 해제. 합성 규칙: 노출 URL = `url_override ?? product_url`, 수동 링크의 `urlType`은 `direct` 취급. **상품 병합 키(productKey)와 썸네일 캐시 키도 오버라이드 링크 기준**으로 바뀐다 — 링크 수정이 카드 정체성을 이동시키는 의도적 설계. `history.ts`·`fetch-thumbnails.ts`(og 후보·다나와 단계 모두, 오버라이드는 direct 간주)도 동일 합성. "수동수정 있음" 필터와 전체 되돌리기(clear)에 포함. 스키마는 `scripts/migrate-admin.ts`가 멱등 추가.

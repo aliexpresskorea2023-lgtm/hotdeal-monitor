@@ -1,4 +1,4 @@
-import { getDealFeed, hotScore, type ItemView } from "@/src/db/queries";
+import { getDealFeed, hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
 import {
   CATEGORIES,
   COMMUNITIES,
@@ -22,6 +22,11 @@ import {
  * 점수는 출처 게시글 stats 합산: 추천×1e8 + 조회수.
  * "실시간"은 수집 주기(2시간) 갱신 기준 — 매 요청 DB 재조회.
  *
+ * 신선도 규칙(2026-08-28): 등록된 지 24시간이 지난 딜은 순위에서
+ * 제외한다 — 묵은 바이럴 딜이 점수 누적만으로 상위권을 차지하는
+ * 것을 막는다. 기준 시각 = 가장 이른 출처 게시 시각(없으면 첫
+ * 적재 시각).
+ *
  * 필터(2026-08-27 추가): 카테고리 + 쇼핑몰 칩 — 핫딜 모음과
  * 동일하게 쿼리스트링 기반 서버 렌더.
  */
@@ -32,6 +37,7 @@ export const metadata = {
 };
 
 const TOP_N = 10;
+const RANK_MAX_AGE_HOURS = 24;
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -85,7 +91,9 @@ export default async function RankingPage({ searchParams }: PageProps) {
 
   const { items, hasData } = getDealFeed({ category, store, community });
 
+  const nowMs = Date.now();
   const ranked = [...items]
+    .filter((i) => itemAgeMs(i, nowMs) < RANK_MAX_AGE_HOURS * 3_600_000)
     .sort((a, b) => hotScore(b) - hotScore(a))
     .slice(0, TOP_N);
   const maxScore = ranked.length > 0 ? hotScore(ranked[0]) : 0;
@@ -100,7 +108,10 @@ export default async function RankingPage({ searchParams }: PageProps) {
       <div className="page-head">
         <div>
           <h1>핫딜 실시간 순위</h1>
-          <p>조회수·추천·댓글 기반 TOP {TOP_N} — 수집 주기마다 갱신됩니다.</p>
+          <p>
+            조회수·추천·댓글 기반 TOP {TOP_N} — {RANK_MAX_AGE_HOURS}시간
+            이내 딜만 집계하며, 수집 주기마다 갱신됩니다.
+          </p>
         </div>
       </div>
 

@@ -13,7 +13,9 @@ import {
  *
  * PATCH — 오버라이드·숨김 수정. 본문 필드만 적용한다.
  *   { name_override?, price_override?, category_override?,
- *     store_override?, hidden? }
+ *     store_override?, url_override?, hidden? }
+ *   url_override는 비우면(빈 문자열·공백) 해제, 설정 시
+ *   http(s):// 링크만 허용한다.
  * POST — 액션.
  *   { action: "restore" }     제외 복원
  *   { action: "reexclude" }   복원 철회 (다음 인제스트에서 재제외)
@@ -39,6 +41,17 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const body = (await req.json()) as Record<string, unknown>;
 
+  /* 구매링크 수동 지정은 http(s) 링크만 허용. */
+  const urlOverride = normalizeOptionalText(body.url_override);
+  if (urlOverride !== undefined && urlOverride !== null) {
+    if (!/^https?:\/\//i.test(urlOverride)) {
+      return NextResponse.json(
+        { error: "구매링크는 http:// 또는 https:// 주소만 가능합니다" },
+        { status: 400 },
+      );
+    }
+  }
+
   const db = openAdminDb();
 
   try {
@@ -47,6 +60,7 @@ export async function PATCH(req: Request, { params }: Params) {
       price_override: normalizeOptionalNumber(body.price_override),
       category_override: normalizeOptionalText(body.category_override),
       store_override: normalizeOptionalText(body.store_override),
+      url_override: urlOverride,
       hidden:
         body.hidden === 0 || body.hidden === 1 ? body.hidden : undefined,
     });
@@ -87,6 +101,7 @@ export async function POST(req: Request, { params }: Params) {
         price_override: null,
         category_override: null,
         store_override: null,
+        url_override: null,
       });
     } else {
       return NextResponse.json({ error: "unknown action" }, { status: 400 });

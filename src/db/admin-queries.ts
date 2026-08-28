@@ -32,6 +32,8 @@ export interface AdminDealRow {
   storeOverride: string | null;
   productUrl: string | null;
   urlType: string;
+  /** 구매링크 수동 지정 (노출·상품 키 우선값). */
+  urlOverride: string | null;
 
   hidden: number;
   excludedReason: string | null;
@@ -72,6 +74,9 @@ export interface AdminListResult {
 
 function toRow(r: Record<string, unknown>): AdminDealRow {
   const productUrl = r.product_url as string | null;
+  const urlOverride = (r.url_override as string | null) ?? null;
+  /* 상품 키는 수동 지정 링크 우선 — 공개 피드와 동일 기준. */
+  const effectiveUrl = urlOverride ?? productUrl;
 
   return {
     dealId: r.deal_id as number,
@@ -96,6 +101,7 @@ function toRow(r: Record<string, unknown>): AdminDealRow {
     storeOverride: r.store_override as string | null,
     productUrl,
     urlType: r.url_type as string,
+    urlOverride,
 
     hidden: r.hidden as number,
     excludedReason: r.excluded_reason as string | null,
@@ -105,7 +111,7 @@ function toRow(r: Record<string, unknown>): AdminDealRow {
     views: r.views as number | null,
     recommendations: r.recommendations as number | null,
 
-    productKey: productUrl ? productKeyFromUrl(productUrl) : null,
+    productKey: effectiveUrl ? productKeyFromUrl(effectiveUrl) : null,
     imageUrl: null,
     imageOverride: null,
   };
@@ -118,6 +124,7 @@ const BASE_SELECT = `
          d.product_name, d.name_override, d.deal_price, d.price_override,
          d.price_text, d.currency, d.category, d.category_override,
          d.store, d.store_override, d.product_url, d.url_type,
+         d.url_override,
          d.hidden, d.excluded_reason, d.exclusion_restored,
          p.last_seen_at, p.views, p.recommendations
   FROM deals d
@@ -147,7 +154,8 @@ export function listAdminDeals(
     if (options.overriddenOnly) {
       where.push(
         `(d.name_override IS NOT NULL OR d.price_override IS NOT NULL
-          OR d.category_override IS NOT NULL OR d.store_override IS NOT NULL)`,
+          OR d.category_override IS NOT NULL OR d.store_override IS NOT NULL
+          OR d.url_override IS NOT NULL)`,
       );
     }
 
@@ -339,19 +347,20 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
   try {
     const raw = db
       .prepare(
-        `SELECT d.product_url AS product_url,
+        `SELECT d.product_url AS product_url, d.url_override AS url_override,
                 COALESCE(d.name_override, d.product_name) AS name,
                 COALESCE(d.store_override, d.store) AS store,
                 p.community, p.url AS post_url, p.last_seen_at
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
-         WHERE d.product_url IS NOT NULL
+         WHERE COALESCE(d.url_override, d.product_url) IS NOT NULL
            AND d.excluded_reason IS NULL
            AND d.hidden = 0 AND p.hidden = 0
          ORDER BY p.last_seen_at DESC`,
       )
       .all() as Array<{
-      product_url: string;
+      product_url: string | null;
+      url_override: string | null;
       name: string | null;
       store: string | null;
       community: string;
@@ -362,7 +371,10 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
     const rows = new Map<string, AdminThumbnailRow>();
 
     for (const r of raw) {
-      const key = productKeyFromUrl(r.product_url);
+      const effectiveUrl = r.url_override ?? r.product_url;
+      if (!effectiveUrl) continue;
+
+      const key = productKeyFromUrl(effectiveUrl);
       if (!key || rows.has(key)) continue;
 
       rows.set(key, {
@@ -371,7 +383,7 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
         store: r.store,
         community: r.community,
         postUrl: r.post_url,
-        productUrl: r.product_url,
+        productUrl: effectiveUrl,
         imageUrl: null,
         imageOverride: null,
         attempts: 0,
@@ -442,6 +454,7 @@ export function getAdminDeal(
                 d.product_name, d.name_override, d.deal_price, d.price_override,
                 d.price_text, d.currency, d.category, d.category_override,
                 d.store, d.store_override, d.product_url, d.url_type,
+                d.url_override,
                 d.hidden, d.excluded_reason, d.exclusion_restored,
                 p.last_seen_at, p.views, p.recommendations
          FROM deals d

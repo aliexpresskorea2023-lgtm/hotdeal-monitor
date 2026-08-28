@@ -30,6 +30,7 @@ export function DealEditor({ deal, categories, stores }: Props) {
   );
   const [category, setCategory] = useState(deal.categoryOverride ?? "");
   const [store, setStore] = useState(deal.storeOverride ?? "");
+  const [purchaseUrl, setPurchaseUrl] = useState(deal.urlOverride ?? "");
   const [imageUrl, setImageUrl] = useState(deal.imageOverride ?? "");
 
   function showToast(text: string, error = false) {
@@ -98,6 +99,7 @@ export function DealEditor({ deal, categories, stores }: Props) {
           price.trim() === "" ? null : Number(price),
         category_override: category === "" ? null : category,
         store_override: store.trim() === "" ? null : store,
+        url_override: purchaseUrl.trim() === "" ? null : purchaseUrl.trim(),
       },
       "수동 수정을 저장했습니다",
     );
@@ -109,6 +111,7 @@ export function DealEditor({ deal, categories, stores }: Props) {
     price !== (deal.priceOverride !== null ? String(deal.priceOverride) : "") ||
     category !== (deal.categoryOverride ?? "") ||
     store !== (deal.storeOverride ?? "") ||
+    purchaseUrl !== (deal.urlOverride ?? "") ||
     imageUrl !== (deal.imageOverride ?? "");
 
   return (
@@ -188,6 +191,23 @@ export function DealEditor({ deal, categories, stores }: Props) {
             </datalist>
             <div className="parser-hint">
               파서 값: {deal.store ?? "(없음)"}
+            </div>
+          </div>
+
+          <div className="field">
+            <label>구매링크</label>
+            <input
+              type="text"
+              value={purchaseUrl}
+              onChange={(e) => setPurchaseUrl(e.target.value)}
+              placeholder="https://… (비우면 파서 값 사용)"
+            />
+            <div
+              className={
+                deal.urlOverride ? "parser-hint diff" : "parser-hint"
+              }
+            >
+              파서 값 ({deal.urlType}): {deal.productUrl ?? "(없음)"}
             </div>
           </div>
 

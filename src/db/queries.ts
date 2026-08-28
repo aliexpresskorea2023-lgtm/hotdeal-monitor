@@ -182,6 +182,8 @@ interface DealRow {
   price_override: number | null;
   category_override: string | null;
   store_override: string | null;
+  /** 구매링크 수동 지정 — 설정 시 상품 병합 키도 이 링크 기준. */
+  url_override: string | null;
   hidden: number;
   excluded_reason: string | null;
   exclusion_restored: number;
@@ -258,6 +260,10 @@ function makeSource(member: Member): ItemSourceView {
 
   const priceOverridden = deal.price_override !== null;
 
+  /* 구매링크: 수동 지정이 파서 값보다 우선. 수동 링크는 직접 링크 취급. */
+  const url = deal.url_override ?? deal.product_url;
+  const urlType = deal.url_override !== null ? "direct" : deal.url_type;
+
   return {
     id: `${post.community}-${post.post_id}`,
     source: post.community,
@@ -273,8 +279,8 @@ function makeSource(member: Member): ItemSourceView {
     shipping: deal.shipping,
     shippingText: deal.shipping_text,
     store: deal.store_override ?? deal.store,
-    url: deal.product_url,
-    urlType: deal.url_type,
+    url,
+    urlType,
     postedAt: post.posted_at,
     firstSeenAt: post.first_seen_at,
     collectedAt: post.last_seen_at,
@@ -477,6 +483,21 @@ export function hotScore(item: ItemView): number {
   return rec * 100_000_000 + views;
 }
 
+/**
+ * 아이템 경과 시간 (ms) — 실시간 순위 신선도 판정용.
+ * 기준은 가장 이른 출처의 게시 시각, 사이트가 시각을 안 주면
+ * 첫 적재 시각으로 계산한다. 시각을 파싱 못 하면 0(신규 취급) —
+ * 데이터 이상으로 랭킹에서 잘못 제외되는 것을 막는다.
+ */
+export function itemAgeMs(item: ItemView, now: number = Date.now()): number {
+  const basis = item.postedAt ?? item.firstSource.firstSeenAt;
+  const parsed = Date.parse(basis);
+
+  if (Number.isNaN(parsed)) return 0;
+
+  return Math.max(0, now - parsed);
+}
+
 /*
  * 가격 정렬용 대략 환율 (원화 환산 기준).
  * 2026-08-27 기준치로 고정 — 표시가 아니라 정렬 전용이라
@@ -542,7 +563,8 @@ export function getDealFeed(
                 product_url, url_type, raw_price, raw_shipping,
                 discount_types, discount_codes, discount_description,
                 name_override, price_override, category_override,
-                store_override, hidden, excluded_reason, exclusion_restored
+                store_override, url_override, hidden, excluded_reason,
+                exclusion_restored
          FROM deals
          WHERE post_rowid IN (${placeholders})
          ORDER BY post_rowid, seq`,
@@ -583,9 +605,9 @@ export function getDealFeed(
       }
 
       const member: Member = { post, deal };
-      const urlKey = deal.product_url
-        ? productKeyFromUrl(deal.product_url)
-        : null;
+      /* 병합 키는 수동 지정 링크 우선 — 오버라이드가 카드 정체성을 바꾼다. */
+      const effectiveUrl = deal.url_override ?? deal.product_url;
+      const urlKey = effectiveUrl ? productKeyFromUrl(effectiveUrl) : null;
       const key =
         urlKey ??
         `post:${post.community}:${post.post_id}#${deal.seq}`;

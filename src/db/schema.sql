@@ -113,6 +113,9 @@ CREATE TABLE IF NOT EXISTS deals (
   price_override REAL,
   category_override TEXT,
   store_override TEXT,
+  -- 구매링크 수동 지정. 설정 시 노출·상품 병합 키(productKey)가
+  -- 이 링크 기준으로 바뀌고, 링크 유형은 직접 링크로 취급한다.
+  url_override TEXT,
   -- 어드민 소프트 하이드.
   hidden INTEGER NOT NULL DEFAULT 0,
 

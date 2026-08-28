@@ -55,9 +55,13 @@ export default async function AdminDealDetailPage({ params }: PageProps) {
               {(deal.views ?? 0).toLocaleString("ko-KR")} · 추천{" "}
               {(deal.recommendations ?? 0).toLocaleString("ko-KR")}
             </div>
-            {deal.productUrl && (
+            {(deal.urlOverride ?? deal.productUrl) && (
               <div className="sub" style={{ marginTop: 4, wordBreak: "break-all" }}>
-                구매링크({deal.urlType}): {deal.productUrl}
+                구매링크({deal.urlOverride ? "수동" : deal.urlType}):{" "}
+                {deal.urlOverride ?? deal.productUrl}
+                {deal.urlOverride &&
+                  deal.productUrl &&
+                  ` · 파서 값: ${deal.productUrl}`}
               </div>
             )}
           </div>

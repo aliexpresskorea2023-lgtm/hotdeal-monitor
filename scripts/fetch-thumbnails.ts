@@ -265,8 +265,10 @@ async function main() {
     /* ---- 1단계: og:image ---------------------------------- */
     const rows = db
       .prepare(
-        `SELECT DISTINCT product_url FROM deals
-         WHERE product_url IS NOT NULL AND url_type = 'direct'`,
+        `SELECT DISTINCT COALESCE(url_override, product_url) AS product_url
+         FROM deals
+         WHERE url_override IS NOT NULL
+            OR (product_url IS NOT NULL AND url_type = 'direct')`,
       )
       .all() as { product_url: string }[];
 
@@ -344,13 +346,16 @@ async function main() {
      * 직접 링크는 og 3회 소진 후, 제휴/리다이렉트는 즉시 대상. */
     const dealRows = db
       .prepare(
-        `SELECT d.product_url AS url, d.url_type AS url_type,
+        `SELECT COALESCE(d.url_override, d.product_url) AS url,
+                CASE WHEN d.url_override IS NOT NULL THEN 'direct'
+                     ELSE d.url_type END AS url_type,
                 d.product_name AS name, d.category AS raw_category,
                 d.store AS store, p.community AS community,
                 p.title AS post_title
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
-         WHERE d.product_name IS NOT NULL AND d.product_url IS NOT NULL`,
+         WHERE d.product_name IS NOT NULL
+           AND COALESCE(d.url_override, d.product_url) IS NOT NULL`,
       )
       .all() as {
       url: string;
