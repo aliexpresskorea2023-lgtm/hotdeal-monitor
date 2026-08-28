@@ -1102,3 +1102,289 @@ a {
     @apply font-sans;
   }
 }
+
+/* ============================================================
+   어드민 (2026-08-28) — 공개 화면 토큰 재사용, 로컬 전용
+   ============================================================ */
+
+.nav-divider {
+  margin: 18px 12px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+}
+
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.admin-head h1 {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.admin-count {
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.admin-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-table tr:hover td {
+  background: var(--accent);
+}
+
+.admin-table .thumb-cell img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  display: block;
+}
+
+.admin-table .name-cell {
+  max-width: 340px;
+}
+
+.admin-table .name-cell a {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.admin-table .name-cell a:hover {
+  color: var(--primary);
+}
+
+.admin-table .sub {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badge.live {
+  color: var(--live);
+  background: var(--live-bg);
+}
+
+.badge.ended {
+  color: var(--ended);
+  background: var(--ended-bg);
+}
+
+.badge.warn {
+  color: var(--rec);
+  background: color-mix(in srgb, var(--rec) 12%, transparent);
+}
+
+.badge.muted {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.badge.danger {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+/* 어드민 상세 — 필드 편집 폼 */
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.admin-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.admin-card h2 {
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  margin-bottom: 5px;
+}
+
+.field .parser-hint {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+
+.field .parser-hint.diff {
+  color: var(--rec);
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 0;
+}
+
+.field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-row input {
+  flex: 1;
+}
+
+/* 공용 어드민 버튼 */
+.abtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.abtn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.abtn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.abtn.primary:hover {
+  filter: brightness(1.08);
+  color: var(--primary-foreground);
+}
+
+.abtn.danger {
+  color: var(--destructive);
+}
+
+.abtn.danger:hover {
+  border-color: var(--destructive);
+}
+
+.abtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.abtn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* 토스트 */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 50;
+  border-radius: 10px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast.error {
+  background: var(--destructive);
+  color: #fff;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.empty-note {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  line-height: 1.7;
+}

@@ -34,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full">
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <div className="shell">
-          <Sidebar />
+          <Sidebar adminMode={process.env.ADMIN_MODE === "1"} />
           <div className="main">{children}</div>
         </div>
       </body>

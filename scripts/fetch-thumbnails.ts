@@ -65,6 +65,8 @@ type CacheRow = {
   product_key: string;
   image_url: string;
   attempts: number;
+  /** 어드민 수동 지정 썸네일 — 있으면 자동 수집 대상에서 제외. */
+  image_override: string | null;
 };
 
 function decodeEntities(text: string): string {
@@ -271,7 +273,7 @@ async function main() {
     /* 캐시 조회: 성공 건과 포기 건은 건너뛰기. */
     const cached = db
       .prepare(
-        `SELECT product_key, image_url, attempts FROM product_images`,
+        `SELECT product_key, image_url, attempts, image_override FROM product_images`,
       )
       .all() as CacheRow[];
     const cachedByKey = new Map(cached.map((c) => [c.product_key, c]));
@@ -285,6 +287,8 @@ async function main() {
       seen.add(key);
 
       const hit = cachedByKey.get(key);
+      /* 수동 지정 썸네일이 있으면 자동 수집하지 않는다. */
+      if (hit?.image_override) continue;
       if (hit && (hit.image_url !== "" || hit.attempts >= MAX_ATTEMPTS)) {
         continue;
       }
@@ -317,6 +321,7 @@ async function main() {
         product_key: c.key,
         image_url: image ?? "",
         attempts,
+        image_override: prev?.image_override ?? null,
       });
 
       if (image) {
@@ -369,6 +374,7 @@ async function main() {
       seenDanawa.add(key);
 
       const hit = cachedByKey.get(key);
+      if (hit?.image_override) continue; // 수동 지정이 우선
       if (hit && hit.image_url !== "") continue; // 이미지 이미 확보
       if (hit && hit.attempts >= DANAWA_MARK) continue; // 다나와 시도 완료
       if (d.url_type === "direct" && (!hit || hit.attempts < MAX_ATTEMPTS)) {

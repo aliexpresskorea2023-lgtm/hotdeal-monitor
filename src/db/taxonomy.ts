@@ -226,7 +226,7 @@ export function isOtherStore(storeNorm: string): boolean {
 }
 
 /** 스토어 표기 별칭 → 대표 표기(필터 라벨과 동일). null/빈 값은 "기타". */
-const STORE_ALIASES: Record<string, string> = {
+export const STORE_ALIASES: Record<string, string> = {
   지마켓: "지마켓",
   G마켓: "지마켓",
   GMARKET: "지마켓",

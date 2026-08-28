@@ -259,3 +259,17 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 **대왕오징어 1000원 수리**: 303707 마커 라인 버그 시점(파서 수정 전)에 기록된 관측 1건(1000원=적립금 오독)이 히스토리에 남아 있었음. 전수 감사로 유일한 오염 확인 → 실제 가격 5400원으로 수정. 딜 자체는 이전 `repair-ppomppu-prices.ts`로 이미 수리된 상태였음.
 
 **커뮤니티 로고 정방형 교체**: 사용자 제공 250×250 PNG(ppomppu·arca는 jpeg→png 확장자 변경, COMMUNITY_LOGOS 경로 갱신).
+
+### v1.4 로컬 어드민 — 오버라이드 레이어 + 5메뉴 (2026-08-28)
+
+**게이트**: `ADMIN_MODE=1`일 때만 어드민이 열린다(`src/lib/admin-gate.ts`). 페이지는 레이아웃에서 `notFound()`, API는 `adminGate()`로 404. 프로덕션(Vercel)은 환경변수 미설정이라 입구 자체가 없다. 쓰기 어드민은 로컬 전용 — 현재 쓰기 가능 DB는 수집기가 도는 맥에 있고, 수정분은 2시간 주기 파이프라인의 DB 커밋+배포로 자동 반영된다.
+
+**오버라이드 레이어 원칙**: 파서 값 컬럼(`product_name`, `deal_price`, `category`, `store`, …)은 인제스트가 계속 갱신하고, 수동 수정은 `*_override` 컬럼에만 쓴다. 노출은 `queries.ts`가 오버라이드 우선으로 합성. "잠금·스킵" 방식은 수집기 갱신이 멈춰 값이 영원히 고이는 문제가 있어 기각. 파서 최신값 ≠ 오버라이드인 행이 곧 검토 큐(어드민 "수동수정 있음" 필터). 쓰기 계층은 `src/db/admin.ts` 한 곳으로 모아 변경 필드 단위 감사 기록(`admin_audit`).
+
+**제외 딜 기록**: 인제스트가 제외 딜도 `excluded_reason`(category|zero-price|promo-title|software-title|rental-title|travel-title)과 함께 적재한다(전엔 스킵). 복원 = `exclusion_restored=1` + 사유 해제 → 인제스트가 다시 제외하지 않고 관측도 계속. 복원 시 사유가 지워지므로 제외 탭 쿼리는 `excluded_reason IS NOT NULL OR exclusion_restored = 1`(복원 철회 입구 보존). 복원 철회 = 마커 해제뿐 — 실제 재제외는 다음 인제스트의 규칙 재판정.
+
+**관측 오염 정정**: 가격 오버라이드는 표시값에만 영향, `price_observations`는 사실 기록으로 유지. 오염 관측 자체는 행 단위 수정·물리 삭제로 제거(삭제 확정).
+
+**메뉴**: ① 핫딜 카드 관리(`/admin/deals`, 행 단위 목록+상세 편집기) ② 썸네일 관리(`/admin/thumbnails`, 상품 키 단위·수동 URL/해제/캐시 초기화 — `fetch-thumbnails`는 `image_override` 있는 키 자동 수집 스킵) ③ 제외/미분류 상품 관리(`/admin/excluded`, 복원·카테고리 지정) ④ 택소노미(읽기 전용 — 분류는 계속 코드가 단일 진실 소스) ⑤ 로그(플레이스홀더 — 한국 VPS 이전 시 오픈, 그동안 기록은 `admin_audit`에 누적).
+
+**주의할 구현 디테일**: `/admin` 인덱스는 `force-dynamic` — 정적 프리렌더가 빌드 시점(게이트 꺼진 상태) 404를 굽던 문제. 어드민 API 라우트는 쓰기 전용이지만 `GET` 핸들러가 무조건 404를 돌려 게이트 꺼진 상태에서 405로 라우트 존재가 새는 것을 막는다. `deals`/`posts`의 `hidden`은 노출에서만 숨김(행·관측 보존).

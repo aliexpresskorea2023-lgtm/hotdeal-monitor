@@ -3,6 +3,7 @@ import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
 import { cleanDisplayName, splitNameParts, type NameParts } from "../lib/name";
 import {
+  ALL_NORM_CATEGORIES,
   isOtherStore,
   normalizeCategory,
   normalizeStore,
@@ -153,6 +154,9 @@ interface PostRow {
   affiliate_raw_url: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  /** 어드민 수동 상태 지정 (없으면 수집기 판정). */
+  status_override: string | null;
+  hidden: number;
 }
 
 interface DealRow {
@@ -173,6 +177,14 @@ interface DealRow {
   discount_types: string | null;
   discount_codes: string | null;
   discount_description: string | null;
+  /** 어드민 오버라이드 — 없으면 파서 값 노출. */
+  name_override: string | null;
+  price_override: number | null;
+  category_override: string | null;
+  store_override: string | null;
+  hidden: number;
+  excluded_reason: string | null;
+  exclusion_restored: number;
 }
 
 interface Member {
@@ -229,6 +241,11 @@ export function productKeyFromUrl(raw: string): string | null {
 }
 
 function statusOf(row: PostRow): PostStatus {
+  /* 어드민 수동 지정이 수집기 판정보다 우선. */
+  if (row.status_override === "active" || row.status_override === "ended") {
+    return row.status_override;
+  }
+
   if (row.status === "active" || row.status === "ended") {
     return row.status;
   }
@@ -239,19 +256,23 @@ function statusOf(row: PostRow): PostStatus {
 function makeSource(member: Member): ItemSourceView {
   const { post, deal } = member;
 
+  const priceOverridden = deal.price_override !== null;
+
   return {
     id: `${post.community}-${post.post_id}`,
     source: post.community,
     title: post.title,
     sourceUrl: post.url,
     status: statusOf(post),
-    name: deal.product_name,
-    price: deal.deal_price,
-    currency: deal.currency,
-    priceText: deal.price_text,
+    name: deal.name_override ?? deal.product_name,
+    price: priceOverridden ? deal.price_override : deal.deal_price,
+    currency: priceOverridden ? "KRW" : deal.currency,
+    priceText: priceOverridden
+      ? `${Math.round(deal.price_override as number).toLocaleString("ko-KR")}원`
+      : deal.price_text,
     shipping: deal.shipping,
     shippingText: deal.shipping_text,
-    store: deal.store,
+    store: deal.store_override ?? deal.store,
     url: deal.product_url,
     urlType: deal.url_type,
     postedAt: post.posted_at,
@@ -296,40 +317,63 @@ function buildItem(key: string, members: Member[]): ItemView {
   const named = sources.find((s) => s.name !== null) ?? sources[0];
 
   /*
-   * 대표 가격: 가격 있는 출처 중 최신 출처의 통화를 기준으로
-   * 그 통화인 출처들의 최저가. 통화가 뒤섞인 채 최저를 구하는
-   * 것은 무의미하므로 기준 통화를 먼저 고정한다.
+   * 대표 가격: 수동 가격 오버라이드가 있으면 그것이 무조건 대표
+   * 가격이다 (여럿이면 최신 출처 것). 없으면 기존 규칙 — 가격
+   * 있는 출처 중 최신 출처의 통화를 기준으로 그 통화 출처들의
+   * 최저가. 통화가 뒤섞인 채 최저를 구하는 것은 무의미하므로
+   * 기준 통화를 먼저 고정한다.
    */
-  const priced = sources.filter((s) => s.price !== null);
   let price: number | null = null;
   let currency = named.currency;
   let priceText = named.priceText;
   let shipping = named.shipping;
   let shippingText = named.shippingText;
 
-  if (priced.length > 0) {
-    const baseCurrency = priced[0].currency;
-    const sameCurrency = priced.filter((s) => s.currency === baseCurrency);
+  const overridden = members
+    .filter((m) => m.deal.price_override !== null)
+    .sort((a, b) =>
+      b.post.last_seen_at.localeCompare(a.post.last_seen_at),
+    )[0];
 
-    let best = sameCurrency[0];
+  if (overridden) {
+    const oSource = makeSource(overridden);
+    price = oSource.price;
+    currency = oSource.currency;
+    priceText = oSource.priceText;
+    shipping = oSource.shipping;
+    shippingText = oSource.shippingText;
+  } else {
+    const priced = sources.filter((s) => s.price !== null);
 
-    for (const candidate of sameCurrency) {
-      if ((candidate.price as number) < (best.price as number)) {
-        best = candidate;
+    if (priced.length > 0) {
+      const baseCurrency = priced[0].currency;
+      const sameCurrency = priced.filter((s) => s.currency === baseCurrency);
+
+      let best = sameCurrency[0];
+
+      for (const candidate of sameCurrency) {
+        if ((candidate.price as number) < (best.price as number)) {
+          best = candidate;
+        }
       }
-    }
 
-    price = best.price;
-    currency = best.currency;
-    priceText = best.priceText;
-    shipping = best.shipping;
-    shippingText = best.shippingText;
+      price = best.price;
+      currency = best.currency;
+      priceText = best.priceText;
+      shipping = best.shipping;
+      shippingText = best.shippingText;
+    }
   }
 
   const linked = sources.find((s) => s.url !== null) ?? null;
   const store = sources.find((s) => s.store !== null)?.store ?? null;
   const storeNorm = normalizeStore(store);
-  const catMember = members.find((m) => m.deal.category) ?? null;
+  const catMember =
+    members.find(
+      (m) => (m.deal.category_override ?? m.deal.category) !== null,
+    ) ?? null;
+  const catValue =
+    (catMember?.deal.category_override ?? catMember?.deal.category) ?? null;
 
   const postedTimes = sources
     .map((s) => s.postedAt)
@@ -363,12 +407,14 @@ function buildItem(key: string, members: Member[]): ItemView {
     store,
     url: linked?.url ?? null,
     urlType: linked?.urlType ?? "none",
-    category: catMember?.deal.category ?? null,
-    categoryNorm: normalizeCategory(
-      catMember?.post.community ?? "",
-      catMember?.deal.category ?? null,
-      catMember?.post.title ?? null,
-    ),
+    category: catValue,
+    categoryNorm: ALL_NORM_CATEGORIES.includes(catValue as NormCategory)
+      ? (catValue as NormCategory)
+      : normalizeCategory(
+          catMember?.post.community ?? "",
+          catValue,
+          catMember?.post.title ?? null,
+        ),
     storeNorm,
     status,
     discount: {
@@ -473,9 +519,11 @@ export function getDealFeed(
         `SELECT id AS rowid, community, post_id, url, title, posted_at,
                 status, views, recommendations, comments,
                 affiliate_enabled, affiliate_raw_url,
-                first_seen_at, last_seen_at
+                first_seen_at, last_seen_at,
+                status_override, hidden
          FROM posts
-         WHERE EXISTS (SELECT 1 FROM deals d WHERE d.post_rowid = posts.id)
+         WHERE hidden = 0
+           AND EXISTS (SELECT 1 FROM deals d WHERE d.post_rowid = posts.id)
          ORDER BY CASE status WHEN 'ended' THEN 1 ELSE 0 END,
                   last_seen_at DESC, id DESC
          LIMIT ?`,
@@ -492,7 +540,9 @@ export function getDealFeed(
         `SELECT post_rowid, seq, product_name, category, store,
                 deal_price, currency, price_text, shipping, shipping_text,
                 product_url, url_type, raw_price, raw_shipping,
-                discount_types, discount_codes, discount_description
+                discount_types, discount_codes, discount_description,
+                name_override, price_override, category_override,
+                store_override, hidden, excluded_reason, exclusion_restored
          FROM deals
          WHERE post_rowid IN (${placeholders})
          ORDER BY post_rowid, seq`,
@@ -511,8 +561,17 @@ export function getDealFeed(
       const post = postByRowid.get(deal.post_rowid);
       if (!post) continue;
 
-      /* 무형·비핫딜 2차 방어 (1차는 인제스트 — 기존 잔여분 거르기). */
+      /* 어드민 숨김·제외(미복원) 딜은 노출하지 않는다. */
+      if (deal.hidden === 1) continue;
+      if (deal.excluded_reason !== null) continue;
+
+      /*
+       * 무형·비핫딜 2차 방어 — 기존 잔여분과 나중에 추가된 규칙을
+       * 거른다. 어드민에서 복원된 딜은 규칙 판정을 다시 적용하지
+       * 않는다 (복원 결정 유지).
+       */
       if (
+        deal.exclusion_restored === 0 &&
         checkExclusion({
           community: post.community,
           category: deal.category,
@@ -549,12 +608,23 @@ export function getDealFeed(
       const ph = urlKeys.map(() => "?").join(", ");
       const imgRows = db
         .prepare(
-          `SELECT product_key, image_url FROM product_images
-           WHERE product_key IN (${ph}) AND image_url != ''`,
+          `SELECT product_key, image_url, image_override
+           FROM product_images
+           WHERE product_key IN (${ph})
+             AND (image_url != '' OR image_override IS NOT NULL)`,
         )
-        .all(...urlKeys) as { product_key: string; image_url: string }[];
+        .all(...urlKeys) as {
+        product_key: string;
+        image_url: string;
+        image_override: string | null;
+      }[];
 
-      const imgByKey = new Map(imgRows.map((r) => [r.product_key, r.image_url]));
+      const imgByKey = new Map(
+        imgRows.map((r) => [
+          r.product_key,
+          r.image_override ?? (r.image_url !== "" ? r.image_url : null),
+        ]),
+      );
 
       for (const item of items) {
         item.imageUrl = imgByKey.get(item.key) ?? null;

@@ -1,4 +1,4 @@
--- hotdeal-monitor DB 스키마 v1 (2026-08-26)
+-- hotdeal-monitor DB 스키마 (2026-08-28: 어드민 오버라이드 컬럼 추가)
 --
 -- 설계 원칙
 -- 1. 게시글 단위 중복 제거: posts는 (community, post_id) 유일.
@@ -12,8 +12,13 @@
 --    items 테이블/매칭 로직은 다음 단계에서 추가한다. (AGENTS.md 보류 결정)
 -- 5. 종료 딜도 데이터다: ended는 터미널 상태라 수집 워커가 재수집을
 --    건너뛰지만, 행 자체는 최저가 히스토리용으로 영구 보존한다.
+-- 6. 수동 수정은 오버라이드 레이어: *_override 컬럼은 어드민이 쓰고,
+--    수집기는 절대 건드리지 않는다. 노출은 오버라이드 우선 합성.
+--    수집기는 파서 최신 값을 원본 컬럼에 계속 갱신하므로 값이 고이지
+--    않고, 오버라이드 해제 시 최신 파서 값으로 즉시 복귀한다.
 --
 -- 적용: CREATE TABLE IF NOT EXISTS 기반이라 멱등. src/db/index.ts가 실행한다.
+-- 운영 중 DB에는 scripts/migrate-admin.ts가 컬럼을 멱등 추가한다.
 
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY,
@@ -42,6 +47,12 @@ CREATE TABLE IF NOT EXISTS posts (
   last_seen_at TEXT NOT NULL,
   -- 마지막 적재 시 스냅샷의 run 내 상대 경로 (가지치기되면 null 가능).
   snapshot_path TEXT,
+  -- 어드민 수동 상태 지정(진행중/종료 고정). 노출 시 수집기 상태보다 우선.
+  -- 해제하면 NULL → 수집기 판정 복귀.
+  status_override TEXT
+    CHECK(status_override IN ('active', 'ended') OR status_override IS NULL),
+  -- 어드민 소프트 하이드. 공개 피드에서 제외하되 행은 보존한다.
+  hidden INTEGER NOT NULL DEFAULT 0,
   UNIQUE(community, post_id)
 );
 
@@ -95,6 +106,26 @@ CREATE TABLE IF NOT EXISTS deals (
   discount_alternatives TEXT,
   discount_description TEXT,
 
+  -- 어드민 오버라이드 레이어 (수집기는 이 컬럼들을 쓰지 않는다).
+  -- 노출은 오버라이드 우선 합성 (src/db/queries.ts).
+  name_override TEXT,
+  -- 원화 표시값. 설정 시 통화와 무관하게 이 값으로 노출.
+  price_override REAL,
+  category_override TEXT,
+  store_override TEXT,
+  -- 어드민 소프트 하이드.
+  hidden INTEGER NOT NULL DEFAULT 0,
+
+  -- 제외 기록: 인제스트가 제외 규칙 판정 시 사유를 남기고 행은 적재한다.
+  -- 어드민 복원은 사유를 지우고 exclusion_restored=1로 표시 →
+  -- 이후 인제스트가 규칙에 걸려도 다시 제외하지 않는다.
+  excluded_reason TEXT
+    CHECK(excluded_reason IN (
+      'category', 'zero-price', 'promo-title', 'software-title',
+      'rental-title', 'travel-title'
+    ) OR excluded_reason IS NULL),
+  exclusion_restored INTEGER NOT NULL DEFAULT 0,
+
   UNIQUE(post_rowid, seq)
 );
 
@@ -143,5 +174,23 @@ CREATE TABLE IF NOT EXISTS product_images (
   product_key TEXT PRIMARY KEY,
   image_url TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 1,
-  fetched_at TEXT NOT NULL
+  fetched_at TEXT NOT NULL,
+  -- 어드민 수동 지정 썸네일. 설정 시 자동 수집 결과보다 우선하고
+  -- 해당 키는 자동 수집 대상에서 제외된다.
+  image_override TEXT
+);
+
+-- 어드민 감사 로그. 모든 어드민 쓰기 작업이 여기 기록된다.
+-- (메뉴 노출은 추후 — 기록은 먼저 시작)
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id INTEGER PRIMARY KEY,
+  at TEXT NOT NULL,
+  -- GitHub OAuth 도입 전까지는 'local'.
+  actor TEXT NOT NULL DEFAULT 'local',
+  action TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  field TEXT,
+  old_value TEXT,
+  new_value TEXT
 );

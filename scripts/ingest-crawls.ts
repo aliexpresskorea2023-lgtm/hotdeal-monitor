@@ -382,28 +382,32 @@ function ingestRun(db: Db, runDir: string): RunSummary {
 
     /*
      * 무형·비핫딜 제외 (정책 2026-08-27): 상품권·SW·포인트, 홍보글,
-     * 항공권·이용권류, 0원 딜은 적재하지 않는다. 남은 상품이
-     * 없으면 products_count=0 → 수집 워커가 재확인 없이 동결.
+     * 항공권·이용권류, 0원 딜. 제외 딜도 행은 적재하되 사유를
+     * 기록한다 — 어드민에서 검토·복원할 수 있어야 하기 때문.
+     * 복원된 딜(exclusion_restored=1)은 규칙에 다시 걸려도 제외하지
+     * 않는다. 남은(노출되는) 상품이 0개면 products_count=0 →
+     * 수집 워커가 재확인 없이 동결.
      */
-    const keptDeals = deals.filter(
-      (deal) =>
-        !checkExclusion({
-          community: entry.community,
-          category: deal.product.category,
-          title: post.title,
-          price: deal.price.dealPrice,
-        }).excluded,
-    );
+    const judged = deals.map((deal) => ({
+      deal,
+      exclusion: checkExclusion({
+        community: entry.community,
+        category: deal.product.category,
+        title: post.title,
+        price: deal.price.dealPrice,
+      }),
+    }));
 
     const snapshotPath = `${manifest.runId}/${entry.snapshot}`;
 
+    /* products_count는 딜 처리 후 실제 노출 수로 확정한다. */
     const postRowid = upsertPost(
       db,
       entry.community,
       entry,
       post,
       snapshotPath,
-      keptDeals.length,
+      0,
     );
 
     summary.snapshots += 1;
@@ -412,17 +416,48 @@ function ingestRun(db: Db, runDir: string): RunSummary {
     /* 이전 적재 때 더 많은 상품이 있었다면 잔여 deal 행 정리. */
     db.prepare(
       `DELETE FROM deals WHERE post_rowid = ? AND seq >= ?`,
-    ).run(postRowid, keptDeals.length);
+    ).run(postRowid, judged.length);
 
-    for (const [seq, deal] of keptDeals.entries()) {
-      const dealRowid = upsertDeal(db, postRowid, seq, deal);
+    let visibleCount = 0;
+
+    for (const [seq, item] of judged.entries()) {
+      const dealRowid = upsertDeal(db, postRowid, seq, item.deal);
 
       summary.deals += 1;
 
-      if (maybeAddObservation(db, dealRowid, deal)) {
+      const row = db
+        .prepare(`SELECT exclusion_restored FROM deals WHERE id = ?`)
+        .get(dealRowid) as { exclusion_restored: number };
+
+      const restored = row.exclusion_restored === 1;
+
+      if (item.exclusion.excluded && !restored) {
+        /* 규칙 제외 + 복원 이력 없음 → 사유 기록 (공개 피드에서 빠짐). */
+        db.prepare(
+          `UPDATE deals SET excluded_reason = ? WHERE id = ?`,
+        ).run(item.exclusion.reason, dealRowid);
+        continue;
+      }
+
+      /*
+       * 노출 딜 (규칙 통과 또는 어드민 복원): 사유 해제. 규칙이
+       * 나중에 풀린 케이스도 여기서 정리된다. 복원 딜은 관찰도
+       * 계속 붙어 가격 기록이 이어진다.
+       */
+      db.prepare(
+        `UPDATE deals SET excluded_reason = NULL WHERE id = ?`,
+      ).run(dealRowid);
+
+      visibleCount += 1;
+
+      if (maybeAddObservation(db, dealRowid, item.deal)) {
         summary.observations += 1;
       }
     }
+
+    db.prepare(
+      `UPDATE posts SET products_count = ? WHERE id = ?`,
+    ).run(visibleCount, postRowid);
   }
 
   db.prepare(
@@ -462,7 +497,8 @@ function listRunDirs(crawlsRoot: string): string[] {
 }
 
 function main(): void {
-  const dbPath = DEFAULT_DB_PATH;
+  /* 테스트·어드민용으로 사본 DB 적재가 필요할 때 환경변수로 지정. */
+  const dbPath = process.env.HOTDEAL_DB_PATH || DEFAULT_DB_PATH;
   const db = openDb(dbPath);
 
   const crawlsRoot = path.join(process.cwd(), "data", "crawls");
