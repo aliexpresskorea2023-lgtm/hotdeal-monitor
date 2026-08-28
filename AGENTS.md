@@ -211,6 +211,8 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 
 **절대 규칙 — 배포 전 `freeze-db.ts`(WAL → 롤백 저널)를 반드시 거쳐야 한다.** 실측 장애(2026-08-27): WAL 모드 DB를 읽기 전용으로 열려면 `-shm` 보조 파일이 필요한데, 보조 파일 없이 `hotdeal.db`만 배포되자 읽기 전용 파일시스템인 Vercel serverless에서 `unable to open database file`(CANTOPEN)로 전 페이지가 죽었다. 보조 파일이 함께 업로드된 과거 배포는 우연히 동작했던 것. 롤백 저널(`PRAGMA journal_mode=DELETE`) DB는 단일 파일로 읽기 전용 열람이 가능하다. 로컬 운영은 영향 없음 — `openDb()`가 수집 시 다시 WAL로 전환한다. 수동 배포 시에도 `npx tsx scripts/freeze-db.ts`를 먼저 실행할 것.
 
+**주의 — 로컬 서버가 켜져 있으면 freeze 직후에도 WAL로 재전환되는 레이스(2026-08-28 실측).** `next dev`/`next start`가 떠 있으면 페이지 렌더마다 `openDb()`가 헤더를 WAL로 돌린다 — freeze 수 초 후면 파일이 다시 WAL이라 `vercel deploy` 업로드가 레이스에서 지면 WAL 파일이 그대로 배포돼 프로덕션 CANTOPEN이 재발한다(사용자 터미널의 dev 서버는 임의로 kill 금지). 안전 절차: freeze → `data/hotdeal.db` 커밋·푸시 → API(`/v6/deployments?projectId=…`, `source=git`)에서 해당 커밋의 git 배포를 찾아 `vercel promote <deployment-id> --yes`로 프로덕션 승격. 커밋 스냅은 동결 상태라 레이스가 없다.
+
 기타 배포 고정값: `vercel.json` 미사용(`nodeVersion` 필드는 미지원이라 에러 유발 — 폐기함), 노드는 `package.json "engines":{"node":"22.x"}`로 고정. DB는 `.gitignore` 제외(커밋 대상) + `next.config.ts outputFileTracingIncludes`로 serverless 번들 포함. `vercel deploy` 업로드는 `.gitignore`를 무시하므로 대용량 디렉터리도 같이 올라간다(불필요 분은 `.vercelignore`로만 제외 가능).
 
 ### v1.1 데이터 품질 수정 + 리브랜드 (2026-08-27)
@@ -273,3 +275,11 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 **메뉴**: ① 핫딜 카드 관리(`/admin/deals`, 행 단위 목록+상세 편집기) ② 썸네일 관리(`/admin/thumbnails`, 상품 키 단위·수동 URL/해제/캐시 초기화 — `fetch-thumbnails`는 `image_override` 있는 키 자동 수집 스킵) ③ 제외/미분류 상품 관리(`/admin/excluded`, 복원·카테고리 지정) ④ 택소노미(읽기 전용 — 분류는 계속 코드가 단일 진실 소스) ⑤ 로그(플레이스홀더 — 한국 VPS 이전 시 오픈, 그동안 기록은 `admin_audit`에 누적).
 
 **주의할 구현 디테일**: `/admin` 인덱스는 `force-dynamic` — 정적 프리렌더가 빌드 시점(게이트 꺼진 상태) 404를 굽던 문제. 어드민 API 라우트는 쓰기 전용이지만 `GET` 핸들러가 무조건 404를 돌려 게이트 꺼진 상태에서 405로 라우트 존재가 새는 것을 막는다. `deals`/`posts`의 `hidden`은 노출에서만 숨김(행·관측 보존).
+
+### v1.5 모바일 반응형 (2026-08-28)
+
+**구조**: `@media (max-width: 900px)`에서 사이드바를 상단 바(로고 + 아이콘 내비 + 테마 스위치 한 줄)로 전환, `560px` 이하에서 `.nav-label` 숨김. `components/sidebar.tsx` 라벨은 `.nav-label`, 테마 토글 문구는 `.theme-label` 스팬으로 감싸 둠(CSS에서만 제어).
+
+**실측 병목과 해법**: ① `.row-title`의 `white-space: nowrap`이 flex min-content를 526px까지 늘려 레이아웃 뷰포트를 확장 → 모바일에서 2줄 `-webkit-line-clamp`. ② `.shell`이 `min-height:100vh` 그리드라 짧은 페이지(히스토리 상세)에서 남는 높이가 auto 행인 상단바를 늘리는 버그 → 모바일 `grid-template-rows: auto minmax(0,1fr)`로 main이 흡수. ③ 상세 헤드는 `.detail-rail`(flex:none)이 제목을 2px로 압축 → `flex-wrap` + 레일을 `flex:1 1 100%`로 아래 한 줄(현재가 좌측·상품 보기 우측). ④ 랭킹 로우는 `grid-template-areas` 2행 재배치(badge/thumb/title + link/price), 히스토리 카드는 스파크·가격을 둘째 줄로. ⑤ 어드민 테이블은 `display:block; overflow-x:auto` 폴백.
+
+**검증 방법**: playwright-core + 시스템 Chrome(`channel:"chrome"`)으로 390×844(deviceScaleFactor 2) 스크린샷 + `scrollWidth===innerWidth` 체크. 데스크톱(1280px) 회귀도 함께 촬영 — 모바일 규칙은 전부 미디어 블록 안이라 데스크톱 불변.
