@@ -1,3 +1,7 @@
 allowBuilds:
   esbuild: true
   unrs-resolver: true
+# 스크립트 실행 전 암묵적 의존성 설치 검증 비활성화.
+# 활성화 상태에서는 사내 레지스트리에 설치를 시도하는데,
+# 재택 등 접속 불가 네트워크에서 `pnpm dev`가 멈추는 원인 (2026-08-28).
+verifyDepsBeforeRun: false
