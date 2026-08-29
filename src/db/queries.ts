@@ -546,7 +546,7 @@ export function getDealFeed(
          WHERE hidden = 0
            AND EXISTS (SELECT 1 FROM deals d WHERE d.post_rowid = posts.id)
          ORDER BY CASE status WHEN 'ended' THEN 1 ELSE 0 END,
-                  last_seen_at DESC, id DESC
+                  COALESCE(posted_at, first_seen_at) DESC, id DESC
          LIMIT ?`,
       )
       .all(postLimit) as unknown as PostRow[];
@@ -696,6 +696,14 @@ export function getDealFeed(
 
     const sort = options.sort ?? "latest";
 
+    /*
+     * 작성 시각 기준: 원문 posted_at, 없으면 첫 적재 시각.
+     * 수집 확인 시각(last_seen_at)은 쓰지 않는다 — 백필된 과거 글이
+     * 적재 직후 "최신"으로 떠오르는 오염을 막는다.
+     */
+    const postedBasis = (i: ItemView) =>
+      i.postedAt ?? i.firstSource.firstSeenAt;
+
     items.sort((a, b) => {
       /* 종료는 어떤 정렬에서도 맨 아래. */
       const endedDiff =
@@ -712,7 +720,7 @@ export function getDealFeed(
       }
 
       return (
-        b.collectedAt.localeCompare(a.collectedAt) ||
+        postedBasis(b).localeCompare(postedBasis(a)) ||
         a.key.localeCompare(b.key)
       );
     });
