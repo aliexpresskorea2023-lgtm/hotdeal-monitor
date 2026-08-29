@@ -1,6 +1,7 @@
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { getPriceHistory, type HistoryItem } from "@/src/db/history";
+import { adminEnabled } from "@/src/lib/admin-gate";
 import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
@@ -37,6 +38,10 @@ function lowestAt(item: HistoryItem): string {
 
 export default async function HistoryPage({ searchParams }: PageProps) {
   const raw = await searchParams;
+
+  /* 어드민 빌드(로컬)에서만 카드 수정 바로가기 노출. */
+  const adminMode = adminEnabled();
+
   const q = (firstParam(raw.q) ?? "").trim();
   const sort = firstParam(raw.sort) === "drop" ? "drop" : "latest";
   const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
@@ -96,40 +101,51 @@ export default async function HistoryPage({ searchParams }: PageProps) {
             const logo = storeLogo(item.storeNorm);
 
             return (
-              <Link className="deal-row hist-row" key={item.dealId} href={`/history/${item.dealId}`}>
-                <div className="thumb">
-                  <img src={logo} alt={item.storeNorm} />
-                </div>
-
-                <div className="row-grow">
-                  <div className="store-line">
-                    <img src={logo} alt="" />
-                    {item.storeNorm}
-                    <span>· {sourceLabel(item.community)}</span>
+              <div className="deal-row hist-row" key={item.dealId}>
+                <Link className="hist-main" href={`/history/${item.dealId}`}>
+                  <div className="thumb">
+                    <img src={logo} alt={item.storeNorm} />
                   </div>
-                  <span className="row-title">{item.name ?? item.postTitle}</span>
-                  <div className="tagrow">
-                    <span className={item.status === "ended" ? "tag ended" : "tag live"}>
-                      {statusLabel(item.status)}
-                    </span>
-                    <span className="tag">{item.categoryNorm}</span>
-                    <span className="tag">관측 {item.points.length}회</span>
+
+                  <div className="row-grow">
+                    <div className="store-line">
+                      <img src={logo} alt="" />
+                      {item.storeNorm}
+                      <span>· {sourceLabel(item.community)}</span>
+                    </div>
+                    <span className="row-title">{item.name ?? item.postTitle}</span>
+                    <div className="tagrow">
+                      <span className={item.status === "ended" ? "tag ended" : "tag live"}>
+                        {statusLabel(item.status)}
+                      </span>
+                      <span className="tag">{item.categoryNorm}</span>
+                      <span className="tag">관측 {item.points.length}회</span>
+                    </div>
                   </div>
-                </div>
 
-                <span className="hist-spark">
-                  <PriceSpark points={item.points} />
-                </span>
-
-                <div className="rail">
-                  <span className="price">
-                    {formatPrice(item.lowestPrice, item.currency, "")}
+                  <span className="hist-spark">
+                    <PriceSpark points={item.points} />
                   </span>
-                  <span className="price-sub">최저가 · {formatTime(lowestAt(item))}</span>
-                </div>
 
-                <ChevronRight className="chev" size={16} />
-              </Link>
+                  <div className="rail">
+                    <span className="price">
+                      {formatPrice(item.lowestPrice, item.currency, "")}
+                    </span>
+                    <span className="price-sub">최저가 · {formatTime(lowestAt(item))}</span>
+                  </div>
+
+                  <ChevronRight className="chev" size={16} />
+                </Link>
+                {adminMode && (
+                  <a
+                    className="btn ghost sm admin-edit"
+                    href={`/admin/deals/${item.dealId}`}
+                    title="어드민 카드 관리에서 열기"
+                  >
+                    수정
+                  </a>
+                )}
+              </div>
             );
           })}
         </section>

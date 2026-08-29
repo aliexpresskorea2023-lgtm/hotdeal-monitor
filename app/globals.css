@@ -560,6 +560,19 @@ a {
   pointer-events: none;
 }
 
+/* 어드민 빌드에서만 노출되는 카드 수정 바로가기.
+ * 일반 방문자에게는 렌더링 자체가 되지 않는다 (각 공개 페이지 참고). */
+.btn.admin-edit {
+  border-style: dashed;
+  border-color: var(--ring);
+  color: var(--muted-foreground);
+}
+
+.btn.admin-edit:hover {
+  border-color: var(--foreground);
+  color: var(--foreground);
+}
+
 .btn.sm {
   padding: 5px 10px;
   font-size: 11px;
@@ -567,6 +580,9 @@ a {
 
 .c-link {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .rail {
@@ -781,6 +797,13 @@ a {
 
 .hist-spark {
   flex: none;
+}
+
+/* 히스토리 카드 전체가 상세로 가는 링크.
+ * display:contents라 자식들이 부모 .deal-row 플렉스에 그대로 참여하고,
+ * 어드민 수정 버튼을 중첩 앵커 없이 형제로 둘 수 있다. */
+.hist-main {
+  display: contents;
 }
 
 .chev {

@@ -1,4 +1,5 @@
 import { getDealFeed, hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
+import { adminEnabled } from "@/src/lib/admin-gate";
 import {
   CATEGORIES,
   COMMUNITIES,
@@ -67,6 +68,9 @@ function viewsSum(item: ItemView): number {
 
 export default async function RankingPage({ searchParams }: PageProps) {
   const raw = await searchParams;
+
+  /* 어드민 빌드(로컬)에서만 카드 수정 바로가기 노출. */
+  const adminMode = adminEnabled();
 
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
@@ -293,6 +297,15 @@ export default async function RankingPage({ searchParams }: PageProps) {
                   >
                     원문링크
                   </a>
+                  {adminMode && (
+                    <a
+                      className="btn ghost sm admin-edit"
+                      href={`/admin/deals/${item.firstSource.dealId}`}
+                      title="어드민 카드 관리에서 열기"
+                    >
+                      수정
+                    </a>
+                  )}
                 </span>
               </div>
             );

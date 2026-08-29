@@ -266,6 +266,8 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 
 **게이트**: `ADMIN_MODE=1`일 때만 어드민이 열린다(`src/lib/admin-gate.ts`). 페이지는 레이아웃에서 `notFound()`, API는 `adminGate()`로 404. 프로덕션(Vercel)은 환경변수 미설정이라 입구 자체가 없다. 쓰기 어드민은 로컬 전용 — 현재 쓰기 가능 DB는 수집기가 도는 맥에 있고, 수정분은 2시간 주기 파이프라인의 DB 커밋+배포로 자동 반영된다.
 
+**공개 페이지 어드민 바로가기**(2026-08-29): 핫딜 모음·실시간 순위·최저가 히스토리의 각 카드에 `수정` 버튼 — `adminEnabled()`일 때만 렌더(프로덕션엔 흔적 없음). 대표 출처(원문 랜딩)의 딜 행 `/admin/deals/{dealId}`로 딥링크. `queries.ts`가 `ItemSourceView.dealId`를 노출. 히스토리는 카드 전체가 링크라 중첩 앵커 금지 — 내부는 `display:contents` 링크, 수정 버튼은 형제로 배치.
+
 **오버라이드 레이어 원칙**: 파서 값 컬럼(`product_name`, `deal_price`, `category`, `store`, …)은 인제스트가 계속 갱신하고, 수동 수정은 `*_override` 컬럼에만 쓴다. 노출은 `queries.ts`가 오버라이드 우선으로 합성. "잠금·스킵" 방식은 수집기 갱신이 멈춰 값이 영원히 고이는 문제가 있어 기각. 파서 최신값 ≠ 오버라이드인 행이 곧 검토 큐(어드민 "수동수정 있음" 필터). 쓰기 계층은 `src/db/admin.ts` 한 곳으로 모아 변경 필드 단위 감사 기록(`admin_audit`).
 
 **제외 딜 기록**: 인제스트가 제외 딜도 `excluded_reason`(category|zero-price|promo-title|software-title|rental-title|travel-title)과 함께 적재한다(전엔 스킵). 복원 = `exclusion_restored=1` + 사유 해제 → 인제스트가 다시 제외하지 않고 관측도 계속. 복원 시 사유가 지워지므로 제외 탭 쿼리는 `excluded_reason IS NOT NULL OR exclusion_restored = 1`(복원 철회 입구 보존). 복원 철회 = 마커 해제뿐 — 실제 재제외는 다음 인제스트의 규칙 재판정.

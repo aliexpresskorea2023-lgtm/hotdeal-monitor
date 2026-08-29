@@ -1,5 +1,6 @@
 import { Eye, MessageCircle } from "lucide-react";
 import { getDealFeed, type ItemView } from "@/src/db/queries";
+import { adminEnabled } from "@/src/lib/admin-gate";
 import {
   CATEGORIES,
   COMMUNITIES,
@@ -93,7 +94,13 @@ function pageList(total: number, current: number): (number | "…")[] {
   return out;
 }
 
-function DealRow({ item }: { item: ItemView }) {
+function DealRow({
+  item,
+  adminMode,
+}: {
+  item: ItemView;
+  adminMode: boolean;
+}) {
   const { views, comments } = statSums(item);
   const logo = storeLogo(item.storeNorm);
 
@@ -200,6 +207,15 @@ function DealRow({ item }: { item: ItemView }) {
             구매하기
           </span>
         )}
+        {adminMode && (
+          <a
+            className="btn ghost admin-edit"
+            href={`/admin/deals/${item.firstSource.dealId}`}
+            title="어드민 카드 관리에서 열기"
+          >
+            수정
+          </a>
+        )}
       </div>
     </article>
   );
@@ -207,6 +223,9 @@ function DealRow({ item }: { item: ItemView }) {
 
 export default async function Home({ searchParams }: PageProps) {
   const raw = await searchParams;
+
+  /* 어드민 빌드(로컬)에서만 카드 수정 바로가기 노출. */
+  const adminMode = adminEnabled();
 
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
@@ -381,7 +400,7 @@ export default async function Home({ searchParams }: PageProps) {
       {hasData ? (
         <section className="deal-list">
           {visible.map((item) => (
-            <DealRow key={item.key} item={item} />
+            <DealRow key={item.key} item={item} adminMode={adminMode} />
           ))}
         </section>
       ) : (

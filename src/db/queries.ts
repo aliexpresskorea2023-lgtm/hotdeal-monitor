@@ -46,6 +46,8 @@ export type PostStatus = "active" | "ended" | "unknown";
 export interface ItemSourceView {
   /** `${community}-${post_id}` — 출처 간 유일 키 */
   id: string;
+  /** 이 출처 딜 행의 rowid — 어드민 카드 편집 딥링크(/admin/deals/:id)용. */
+  dealId: number;
   source: string;
   title: string;
   sourceUrl: string;
@@ -160,6 +162,8 @@ interface PostRow {
 }
 
 interface DealRow {
+  /** deals 행 rowid — 어드민 편집 딥링크용. */
+  deal_id: number;
   post_rowid: number;
   seq: number;
   product_name: string | null;
@@ -266,6 +270,7 @@ function makeSource(member: Member): ItemSourceView {
 
   return {
     id: `${post.community}-${post.post_id}`,
+    dealId: deal.deal_id,
     source: post.community,
     title: post.title,
     sourceUrl: post.url,
@@ -558,7 +563,7 @@ export function getDealFeed(
     const placeholders = postRows.map(() => "?").join(", ");
     const dealRows = db
       .prepare(
-        `SELECT post_rowid, seq, product_name, category, store,
+        `SELECT id AS deal_id, post_rowid, seq, product_name, category, store,
                 deal_price, currency, price_text, shipping, shipping_text,
                 product_url, url_type, raw_price, raw_shipping,
                 discount_types, discount_codes, discount_description,
