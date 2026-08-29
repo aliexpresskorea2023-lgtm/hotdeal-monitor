@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
+import { loadDeadKeys, loadResolutions } from "./link-resolution";
 import { cleanDisplayName, splitNameParts, type NameParts } from "../lib/name";
 import {
   ALL_NORM_CATEGORIES,
@@ -196,6 +197,8 @@ interface DealRow {
 interface Member {
   post: PostRow;
   deal: DealRow;
+  /** 구매링크 사망 판정(링크 점검) — 어드민 지정이 없으면 종료 취급. */
+  linkDead: boolean;
 }
 
 /** 파싱 실패 대비가 필요한 JSON 배열 컬럼. */
@@ -218,11 +221,38 @@ function parseJsonArray(raw: string | null): string[] {
  * - 프래그먼트 제거 (옵션 앵커 #... 는 상품 정체성이 아님)
  * - 흔한 트래킹 파라미터 제거 (utm_*, spm, scm, fbclid 등).
  *   파라미터 순서는 정렬해 표기 차이로 갈라지는 것을 방지
- * - 나머지 쿼리는 보존 — 상품 식별자가 쿼리에 있는 스토어가 있다
+ * - 호스트별 정체성 정규화 (쿠팡=itemId, 지마켓=goodscode만 보존) —
+ *   단축링크 해석 결과에 붙는 수십 개의 제휴 추적 파라미터가
+ *   같은 상품의 키를 가르지 않도록. 정체성 파라미터가 없는 주소는
+ *   일반 규칙(추적 제거 + 나머지 보존)으로 폴백
  * - 파싱 실패(이상한 URL) 시 null → 호출 쪽에서 단독 카드로 처리
  */
 const TRACKING_PARAM =
   /^(utm_[a-z]+|fbclid|gclid|igshid?|si|nclid|ref|ref_src|spm|scm)$/i;
+
+/** 호스트별 상품 정체성 파라미터. 나열한 파라미터만 키에 남긴다.
+ * 주의: URLSearchParams는 대소문자를 구분하므로 실제 표기 그대로. */
+const IDENTITY_PARAMS: Record<string, string[]> = {
+  "coupang.com": ["itemId"],
+  "www.coupang.com": ["itemId"],
+  "m.coupang.com": ["itemId"],
+  "item.gmarket.co.kr": ["goodscode"],
+  "m.gmarket.co.kr": ["goodscode"],
+};
+
+function canonicalForHost(parsed: URL): void {
+  const identity = IDENTITY_PARAMS[parsed.host.toLowerCase()];
+
+  if (!identity) return;
+
+  const kept = identity.find((name) => parsed.searchParams.has(name));
+
+  if (!kept) return;
+
+  const value = parsed.searchParams.get(kept);
+
+  parsed.search = `${kept}=${encodeURIComponent(value ?? "")}`;
+}
 
 export function productKeyFromUrl(raw: string): string | null {
   try {
@@ -233,6 +263,8 @@ export function productKeyFromUrl(raw: string): string | null {
         parsed.searchParams.delete(key);
       }
     }
+
+    canonicalForHost(parsed);
 
     parsed.searchParams.sort();
 
@@ -246,10 +278,15 @@ export function productKeyFromUrl(raw: string): string | null {
   }
 }
 
-function statusOf(row: PostRow): PostStatus {
+function statusOf(row: PostRow, linkDead = false): PostStatus {
   /* 어드민 수동 지정이 수집기 판정보다 우선. */
   if (row.status_override === "active" || row.status_override === "ended") {
     return row.status_override;
+  }
+
+  /* 구매링크 사망 판정 — 커뮤니티 마커 없이 종료를 잡아내는 층. */
+  if (linkDead) {
+    return "ended";
   }
 
   if (row.status === "active" || row.status === "ended") {
@@ -274,7 +311,7 @@ function makeSource(member: Member): ItemSourceView {
     source: post.community,
     title: post.title,
     sourceUrl: post.url,
-    status: statusOf(post),
+    status: statusOf(post, member.linkDead),
     name: deal.name_override ?? deal.product_name,
     price: priceOverridden ? deal.price_override : deal.deal_price,
     currency: priceOverridden ? "KRW" : deal.currency,
@@ -584,6 +621,16 @@ export function getDealFeed(
     /* 식별 키 → 멤버 목록. 키가 없으면(링크 없음) 단독 카드. */
     const groups = new Map<string, Member[]>();
 
+    /*
+     * 단축링크 해석 + 사망 링크 판정 일괄 조회.
+     * 해석은 병합 키에만 반영 — 노출 구매링크는 원본 유지(제휴 귀속).
+     */
+    const resolutions = loadResolutions(
+      db,
+      dealRows.map((deal) => deal.url_override ?? deal.product_url),
+    );
+    const deadKeys = loadDeadKeys(db);
+
     for (const deal of dealRows) {
       const post = postByRowid.get(deal.post_rowid);
       if (!post) continue;
@@ -609,10 +656,20 @@ export function getDealFeed(
         continue;
       }
 
-      const member: Member = { post, deal };
       /* 병합 키는 수동 지정 링크 우선 — 오버라이드가 카드 정체성을 바꾼다. */
       const effectiveUrl = deal.url_override ?? deal.product_url;
-      const urlKey = effectiveUrl ? productKeyFromUrl(effectiveUrl) : null;
+      const resolved = effectiveUrl
+        ? resolutions.get(effectiveUrl)
+        : undefined;
+      const urlKey = effectiveUrl
+        ? productKeyFromUrl(resolved ?? effectiveUrl)
+        : null;
+
+      const member: Member = {
+        post,
+        deal,
+        linkDead: urlKey !== null && deadKeys.has(urlKey),
+      };
       const key =
         urlKey ??
         `post:${post.community}:${post.post_id}#${deal.seq}`;

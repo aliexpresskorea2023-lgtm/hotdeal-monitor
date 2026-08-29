@@ -27,6 +27,7 @@
  */
 import { openDb, nowKstIso } from "../src/db/index";
 import { productKeyFromUrl } from "../src/db/queries";
+import { loadResolutions } from "../src/db/link-resolution";
 import { normalizeCategory, normalizeStore } from "../src/db/taxonomy";
 import { cleanDisplayName, splitNameParts } from "../src/lib/name";
 
@@ -283,8 +284,15 @@ async function main() {
     const candidates: Candidate[] = [];
     const seen = new Set<string>();
 
+    /* 단축링크 해석 반영 — 피드가 참조하는 키와 동일 키로 캐시. */
+    const resolutions = loadResolutions(
+      db,
+      rows.map((r) => r.product_url),
+    );
+
     for (const { product_url } of rows) {
-      const key = productKeyFromUrl(product_url);
+      const resolved = resolutions.get(product_url);
+      const key = productKeyFromUrl(resolved ?? product_url);
       if (!key || seen.has(key)) continue;
       seen.add(key);
 
@@ -295,7 +303,7 @@ async function main() {
         continue;
       }
 
-      candidates.push({ key, url: product_url });
+      candidates.push({ key, url: resolved ?? product_url });
     }
 
     const batch = candidates.slice(0, limit);
@@ -370,11 +378,17 @@ async function main() {
     const danawaCandidates: DanawaCandidate[] = [];
     const seenDanawa = new Set<string>();
 
+    /* 1단계와 같은 해석 반영 — 동일 키 규약 유지. */
+    const danawaResolutions = loadResolutions(
+      db,
+      dealRows.map((d) => d.url),
+    );
+
     for (const d of dealRows) {
       const norm = normalizeCategory(d.community, d.raw_category, d.post_title);
       if (!DANAWA_CATEGORIES.has(norm)) continue;
 
-      const key = productKeyFromUrl(d.url);
+      const key = productKeyFromUrl(danawaResolutions.get(d.url) ?? d.url);
       if (!key || seenDanawa.has(key)) continue;
       seenDanawa.add(key);
 

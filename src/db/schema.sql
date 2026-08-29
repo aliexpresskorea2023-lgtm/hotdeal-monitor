@@ -257,3 +257,33 @@ CREATE TABLE IF NOT EXISTS trend_enrichment (
   ads_fetched_at TEXT,
   PRIMARY KEY (ymd, keyword)
 );
+
+-- 제휴 단축링크 해석 캐시 (2026-08-29).
+-- link.coupang.com 같은 단축링크는 오프라인으로 정규화할 수 없어
+-- 같은 상품인데도 병합 키가 갈라진다(카드 분할). 리졸버
+-- (scripts/resolve-links.ts)가 리다이렉트 목적지를 여기 저장하고,
+-- 병합 키 합성(queries.ts 등)이 해석 결과를 참조한다.
+-- 해석은 키에만 영향 — 노출 구매링크는 제휴 귀속 유지를 위해 원본 유지.
+-- resolved_url NULL = 시도 실패 기록. 3회 시도 후에도 실패면 포기.
+CREATE TABLE IF NOT EXISTS link_resolutions (
+  source_url TEXT PRIMARY KEY,
+  resolved_url TEXT,
+  resolved_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 1
+);
+
+-- 구매링크 도달성 점검 상태 (2026-08-29).
+-- 커뮤니티 글에 종료 마커가 없어도 구매링크가 사라진 딜을 종료로
+-- 분류한다. 명확한 사망 신호(404/410)가 2회 연속 확인되면 dead=1,
+-- 다시 도달 가능해지면 0(부활). 차단·타임아웃·챌린지는 무신호 —
+-- 죽으나 사나 상태 유지(쿠팡·네이버는 봇 방어라 판정 자체가 불가).
+-- 키는 productKeyFromUrl(단축링크 해석 반영) — 피드 병합 키와 동일.
+CREATE TABLE IF NOT EXISTS link_checks (
+  product_key TEXT PRIMARY KEY,
+  -- 실제로 요청한 주소 (단축링크 해석 적용 후).
+  target_url TEXT NOT NULL,
+  last_checked_at TEXT,
+  last_status INTEGER,
+  dead_signals INTEGER NOT NULL DEFAULT 0,
+  dead INTEGER NOT NULL DEFAULT 0
+);

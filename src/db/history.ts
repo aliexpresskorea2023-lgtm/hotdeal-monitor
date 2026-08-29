@@ -6,8 +6,9 @@ import {
   normalizeStore,
   type NormCategory,
 } from "./taxonomy";
+import { loadDeadKeys, loadResolutions } from "./link-resolution";
 import { cleanDisplayName } from "../lib/name";
-import type { PostStatus } from "./queries";
+import { productKeyFromUrl, type PostStatus } from "./queries";
 
 /*
  * 최저가 히스토리 읽기 쿼리.
@@ -23,6 +24,10 @@ import type { PostStatus } from "./queries";
  * 딜만. 표시값(이름·스토어·카테고리·구매링크)은 피드와 같은
  * 오버라이드 우선 합성 — 어드민 수정분이 여기에도 반영된다.
  * 단 가격 관측 시계열은 사실 기록이라 가격 오버라이드를 섞지 않는다.
+ *
+ * 썸네일도 피드와 동일 — 구매링크(수동 지정 우선)를 단축링크 해석
+ * 반영 키로 product_images에서 조회. 상태는 피드와 같은 합성
+ * (어드민 지정 > 구매링크 사망 판정 > 수집기 판정).
  */
 
 export interface PricePoint {
@@ -44,6 +49,8 @@ export interface HistoryItem {
   categoryNorm: NormCategory;
   status: PostStatus;
   currency: string;
+  /** 상품 썸네일 (product_images 캐시, 피드와 동일 키 합성). */
+  imageUrl: string | null;
   /** 최신 관측 가격 */
   currentPrice: number | null;
   /** 관측 이력 중 최저가 */
@@ -100,6 +107,7 @@ interface DealJoinRow {
   title: string;
   post_url: string;
   status: string;
+  status_override: string | null;
   last_seen_at: string;
 }
 
@@ -169,7 +177,7 @@ export function getPriceHistory(
                 d.name_override, d.store_override, d.category_override,
                 d.excluded_reason, d.exclusion_restored,
                 p.community, p.title, p.url AS post_url,
-                p.status, p.last_seen_at
+                p.status, p.status_override, p.last_seen_at
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
          WHERE d.id IN (${placeholders})`,
@@ -203,6 +211,15 @@ export function getPriceHistory(
     }
 
     const items: HistoryItem[] = [];
+    /* 아이템과 인덱스 동기 — 썸네일 키 배치 조회용. */
+    const imageKeys: (string | null)[] = [];
+
+    /* 단축링크 해석 + 사망 링크 판정 — 피드와 동일한 합성 재료. */
+    const resolutions = loadResolutions(
+      db,
+      dealRows.map((deal) => deal.url_override ?? deal.product_url),
+    );
+    const deadKeys = loadDeadKeys(db);
 
     for (const deal of dealRows) {
       const points = pointsByDeal.get(deal.deal_id) ?? [];
@@ -257,6 +274,23 @@ export function getPriceHistory(
         ? (catValue as NormCategory)
         : normalizeCategory(deal.community, catValue, deal.title);
 
+      const effectiveUrl = deal.url_override ?? deal.product_url;
+      const resolved = effectiveUrl
+        ? resolutions.get(effectiveUrl)
+        : undefined;
+      const imageKey = effectiveUrl
+        ? productKeyFromUrl(resolved ?? effectiveUrl)
+        : null;
+
+      /* 상태 합성은 피드와 동일 우선순위: 어드민 지정 > 사망 판정 > 수집기. */
+      const linkDead = imageKey !== null && deadKeys.has(imageKey);
+      const status: PostStatus =
+        deal.status_override === "active" || deal.status_override === "ended"
+          ? deal.status_override
+          : linkDead
+            ? "ended"
+            : toStatus(deal.status);
+
       items.push({
         dealId: deal.deal_id,
         name:
@@ -267,11 +301,12 @@ export function getPriceHistory(
         community: deal.community,
         postTitle: deal.title,
         sourceUrl: deal.post_url,
-        url: deal.url_override ?? deal.product_url,
+        url: effectiveUrl,
         storeNorm,
         categoryNorm,
-        status: toStatus(deal.status),
+        status,
         currency: deal.currency,
+        imageUrl: null,
         currentPrice,
         lowestPrice,
         highestPrice,
@@ -283,6 +318,43 @@ export function getPriceHistory(
         points,
         updatedAt: points[points.length - 1].observedAt,
       });
+      imageKeys.push(imageKey);
+    }
+
+    /* 썸네일 일괄 조회 — 피드와 같은 캐시·오버라이드 합성. */
+    const urlKeys = [...new Set(
+      imageKeys.filter((k): k is string => k !== null),
+    )];
+
+    if (urlKeys.length > 0) {
+      const ph = urlKeys.map(() => "?").join(", ");
+      const imgRows = db
+        .prepare(
+          `SELECT product_key, image_url, image_override
+           FROM product_images
+           WHERE product_key IN (${ph})
+             AND (image_url != '' OR image_override IS NOT NULL)`,
+        )
+        .all(...urlKeys) as {
+        product_key: string;
+        image_url: string;
+        image_override: string | null;
+      }[];
+
+      const imgByKey = new Map(
+        imgRows.map((r) => [
+          r.product_key,
+          r.image_override ?? (r.image_url !== "" ? r.image_url : null),
+        ]),
+      );
+
+      for (let i = 0; i < items.length; i += 1) {
+        const key = imageKeys[i];
+
+        if (key) {
+          items[i].imageUrl = imgByKey.get(key) ?? null;
+        }
+      }
     }
 
     items.sort((a, b) => {

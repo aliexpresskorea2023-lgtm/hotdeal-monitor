@@ -130,18 +130,37 @@ else
   log "[3/5] 트렌드 정리 실패 — 계속 진행 (베스트 에포트)"
 fi
 
-# ---- 4단계: 썸네일 수집 (베스트 에포트) --------------------
-# 신규 상품 페이지에서 og:image 추출 — 캐시되어 실패는 3회까지만 재시도.
-# 실패해도 표시는 스토어 로고로 폴백되므로 파이프라인을 멈추지 않는다.
+# ---- 4단계: 링크 후처리 + 썸네일 수집 (베스트 에포트) ---------
+# 4-1. 단축링크 해석 — 제휴 래퍼의 목적지를 캐시에 기록해 병합 키를 붙인다.
+#      썸네일 수집이 해석 결과를 참조하므로 먼저 실행한다.
+# 4-2. og:image/다나와 썸네일 수집 — 실패 시 스토어 로고 폴백.
+# 4-3. 구매링크 사망 점검 — 08/22 스윕 시간대만 (종료 스윕과 같은 창).
+# 모두 실패해도 표시 폴백이 있으므로 파이프라인을 멈추지 않는다.
 if [[ "$ingest_rc" -eq 0 ]]; then
+  log "[4/5] resolve-links.ts 실행"
+  if npx tsx scripts/resolve-links.ts --limit 30 >>"$LOG_FILE" 2>&1; then
+    log "[4/5] 단축링크 해석 완료"
+  else
+    log "[4/5] 단축링크 해석 실패 — 계속 진행 (베스트 에포트)"
+  fi
+
   log "[4/5] fetch-thumbnails.ts 실행"
   if npx tsx scripts/fetch-thumbnails.ts --limit 40 >>"$LOG_FILE" 2>&1; then
     log "[4/5] 썸네일 수집 완료"
   else
     log "[4/5] 썸네일 수집 일부 실패 — 계속 진행"
   fi
+
+  if [[ -n "$SWEEP" ]]; then
+    log "[4/5] check-dead-links.ts 실행 (종료 스윕 시간대)"
+    if npx tsx scripts/check-dead-links.ts --limit 40 >>"$LOG_FILE" 2>&1; then
+      log "[4/5] 구매링크 사망 점검 완료"
+    else
+      log "[4/5] 구매링크 사망 점검 실패 — 계속 진행 (베스트 에포트)"
+    fi
+  fi
 else
-  log "[4/5] 썸네일 수집 생략 (ingest 실패)"
+  log "[4/5] 링크 후처리·썸네일 수집 생략 (ingest 실패)"
 fi
 else
   collect_rc=0

@@ -1,4 +1,5 @@
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
+import { loadResolutions } from "./link-resolution";
 import { productKeyFromUrl, type PostStatus } from "./queries";
 
 /*
@@ -391,11 +392,18 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
 
     const rows = new Map<string, AdminThumbnailRow>();
 
+    /* 단축링크 해석 반영 — 피드 병합 키와 같은 상품이 같은 행으로 묶인다. */
+    const resolutions = loadResolutions(
+      db,
+      raw.map((r) => r.url_override ?? r.product_url),
+    );
+
     for (const r of raw) {
       const effectiveUrl = r.url_override ?? r.product_url;
       if (!effectiveUrl) continue;
 
-      const key = productKeyFromUrl(effectiveUrl);
+      const resolved = resolutions.get(effectiveUrl);
+      const key = productKeyFromUrl(resolved ?? effectiveUrl);
       if (!key || rows.has(key)) continue;
 
       /* 수동 고정이 수집기 판정보다 우선 — 공개 피드와 동일. */

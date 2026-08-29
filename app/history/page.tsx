@@ -2,7 +2,7 @@ import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { getPriceHistory, type HistoryItem } from "@/src/db/history";
 import { adminEnabled } from "@/src/lib/admin-gate";
-import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS } from "@/src/db/taxonomy";
+import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
 import { PriceSpark } from "@/components/price-spark";
@@ -29,6 +29,13 @@ function storeLogo(storeNorm: string | null): string {
     return STORE_FILTER_LOGOS[storeNorm];
   }
   return STORE_FILTER_LOGOS[OTHER_STORE_FILTER];
+}
+
+/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 2순위 (피드와 동일). */
+function communityLogo(source: string): string | null {
+  return (COMMUNITIES as readonly string[]).includes(source)
+    ? COMMUNITY_LOGOS[source as Community]
+    : null;
 }
 
 function lowestAt(item: HistoryItem): string {
@@ -104,7 +111,14 @@ export default async function HistoryPage({ searchParams }: PageProps) {
               <div className="deal-row hist-row" key={item.dealId}>
                 <Link className="hist-main" href={`/history/${item.dealId}`}>
                   <div className="thumb">
-                    <img src={logo} alt={item.storeNorm} />
+                    <img
+                      src={
+                        item.imageUrl ??
+                        communityLogo(item.community) ??
+                        logo
+                      }
+                      alt={item.storeNorm}
+                    />
                   </div>
 
                   <div className="row-grow">

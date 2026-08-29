@@ -323,3 +323,13 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 **수정**(`src/db/queries.ts` 두 곳): ① 후보 선택 `ORDER BY` → `COALESCE(posted_at, first_seen_at) DESC`(종료 하단 그룹화 유지). ② 비교기 → `postedAt ?? firstSource.firstSeenAt` 비교(인기 점수 감쇠가 이미 쓰던 `basis` 패턴 재사용). `posted_at` 커버리지 실측 4,511건 중 NULL 1개라 폴백은 사실상 사멸 경로. 종료-항상-마지막 불변식은 유지.
 
 **검증**: 로컬 피드 상위 12개 작성 시각 엄격 내림차순 확인(비종료 전수 검증 PASS), 스키마 테스트 + 빌드 통과 후 프로덕션 직접 배포 — 렌더 순서 재확인(당일 09:48 글 선두, 과거 백필 글은 첫 화면에서 소멸). 인기순·가격순은 주 정렬 불변, 동점 처리만 같은 기준으로 교체.
+
+### 히스토리 썸네일 + 단축링크 해석 + 구매링크 사망 판정 (2026-08-29)
+
+**① 히스토리 썸네일**: 최저가 히스토리(/history, /history/[id])가 상품 썸네일 자리에 스토어 로고만 노출하던 문제 — `HistoryItem.imageUrl` 추가, 피드와 같은 키 규약으로 `product_images` 일괄 조회 후 폴백 체인(상품 이미지 → 커뮤니티 로고 → 스토어 로고).
+
+**② 단축링크 해석**: 제휴 단축링크(link.coupang.com, coupa.ng, link.gmarket.co.kr, naver.me)는 오프라인 정규화가 안 되어 같은 상품이 카드로 갈라지는 문제(배홍동 막국수 사례: fmkorea 단축링크 카드가 분리 노출). 새 테이블 `link_resolutions` + `scripts/resolve-links.ts`(매 회차 30건, 리다이렉트 목적지를 상태 무관 `res.url`로 취득, 시도 3회 상한). **해석은 병합 키 합성에서만 참조** — 노출 구매링크는 제휴 귀속 유지를 위해 원본 유지. 소비 지점 4곳(쿼리/히스토리/어드민 썸네일/썸네일 수집) 전부 `loadResolutions + productKeyFromUrl(resolved ?? raw)` 동일 규약. 해석된 URL은 트래킹 파라미터 수십 개가 붙어 오므로 호스트별 식별 파라미터 규약화 추가(`IDENTITY_PARAMS`: 쿠팡 `itemId`, 지마켓 `goodscode` — URLSearchParams는 대소문자 구분 주의).
+
+**③ 구매링크 사망 판정**: 커뮤 글 마커와 독립인 종료 신호. 새 테이블 `link_checks` + `scripts/check-dead-links.ts`(08/22 스윕 시간대만, 40건, 12시간 재점검 방지). 신호 정책은 보수적: **404/410만 사망 신호**(2회 연속 시 `dead=1` 확정), 200~399는 생존(부활 리셋), 봇 챌린지·403·429·5xx·타임아웃은 무신호 — 쿠팡 상품 페이지는 살아 있어도 Akamai 챌린지가 뜨므로 상태 코드만 보면 전량 오탐(실측). 상태 합성 우선순위: 어드민 `status_override` > `linkDead`(→종료) > 수집기 판정.
+
+**파이프라인**(`run-pipeline.sh` 4단계 재편): 해석 → 썸네일 → 사망 점검(`$SWEEP` 시간대만) 순서, 전부 베스트 에포트. 빌드 주의: 이 리포 TS 타깃은 es2018 미만이라 정규식 `s`(dotAll) 플래그 불가 — `[\s\S]`로 대체.

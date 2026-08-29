@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getPriceHistory, type PricePoint } from "@/src/db/history";
-import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS } from "@/src/db/taxonomy";
+import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatNumber, formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
 
@@ -26,6 +26,13 @@ const RANGES = [
 ] as const;
 
 type RangeKey = (typeof RANGES)[number]["key"];
+
+/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 2순위 (피드와 동일). */
+function communityLogo(source: string): string | null {
+  return (COMMUNITIES as readonly string[]).includes(source)
+    ? COMMUNITY_LOGOS[source as Community]
+    : null;
+}
 
 function valueOf(point: PricePoint): number | null {
   return point.estimatedKrw ?? point.price;
@@ -147,7 +154,10 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
 
       <div className="detail-head">
         <div className="thumb">
-          <img src={logo} alt={item.storeNorm} />
+          <img
+            src={item.imageUrl ?? communityLogo(item.community) ?? logo}
+            alt={item.storeNorm}
+          />
         </div>
 
         <div className="row-grow">
