@@ -397,13 +397,26 @@ function buildItem(key: string, members: Member[]): ItemView {
       const baseCurrency = priced[0].currency;
       const sameCurrency = priced.filter((s) => s.currency === baseCurrency);
 
-      let best = sameCurrency[0];
+      /*
+       * 다수 합의 우선: 2개 이상 출처가 일치하는 가격이 있으면
+       * 최저가보다 그것을 대표가로 삼는다 — 단일 출처의 오타·일시
+       * 가격이 카드를 끌어내리는 것을 막는다 (배홍동 7,400 사례).
+       * 2표 이상인 가격이 없으면 최저가로 폴백 (애그리게이터 본질),
+       * 득표수가 같으면 더 싼 가격 우선. 같은 가격 내에서는 최신
+       * 확인 출처가 대표(출처 목록이 이미 최신 순 정렬).
+       */
+      const votes = new Map<number, ItemSourceView[]>();
 
-      for (const candidate of sameCurrency) {
-        if ((candidate.price as number) < (best.price as number)) {
-          best = candidate;
-        }
+      for (const s of sameCurrency) {
+        const list = votes.get(s.price as number);
+        if (list) list.push(s);
+        else votes.set(s.price as number, [s]);
       }
+
+      const ranked = [...votes.entries()].sort(
+        (a, b) => b[1].length - a[1].length || a[0] - b[0],
+      );
+      const best = ranked[0][1][0];
 
       price = best.price;
       currency = best.currency;
