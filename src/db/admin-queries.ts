@@ -1,5 +1,5 @@
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
-import { productKeyFromUrl } from "./queries";
+import { productKeyFromUrl, type PostStatus } from "./queries";
 
 /*
  * 어드민 읽기 쿼리 — 공개 피드(queries.ts)와 분리.
@@ -278,12 +278,17 @@ export interface AdminThumbnailRow {
   imageOverride: string | null;
   attempts: number;
   lastSeenAt: string;
+  /** 대표 딜 게시글의 상태 (수동 고정 우선). 종료 딜 선별용. */
+  status: PostStatus;
 }
 
 export type ThumbnailView = "all" | "missing" | "cached" | "override";
+/** 종료 여부 선별 — 썸네일 수동 지정은 진행중 딜 위주로 하려고. */
+export type ThumbnailStatusFilter = "all" | "active" | "ended";
 
 export interface ThumbnailListOptions {
   view?: ThumbnailView;
+  status?: ThumbnailStatusFilter;
   page?: number;
   pageSize?: number;
 }
@@ -301,11 +306,23 @@ function matchesView(row: AdminThumbnailRow, view: ThumbnailView): boolean {
   }
 }
 
-/** 상태별 상품 키 수 — 화면 탭 카운트용. */
+function matchesStatus(
+  row: AdminThumbnailRow,
+  status: ThumbnailStatusFilter,
+): boolean {
+  if (status === "active") return row.status !== "ended";
+  if (status === "ended") return row.status === "ended";
+  return true;
+}
+
+/** 상태별 상품 키 수 — 화면 탭 카운트용 (딜 상태 필터 적용 후). */
 export function countThumbnails(
+  status: ThumbnailStatusFilter = "all",
   dbPath: string = DEFAULT_DB_PATH,
 ): Record<ThumbnailView, number> {
-  const all = buildThumbnailRows(dbPath);
+  const all = buildThumbnailRows(dbPath).filter((r) =>
+    matchesStatus(r, status),
+  );
 
   return {
     all: all.length,
@@ -324,11 +341,12 @@ export function listThumbnails(
   dbPath: string = DEFAULT_DB_PATH,
 ): { rows: AdminThumbnailRow[]; total: number; page: number; pageSize: number } {
   const view = options.view ?? "all";
+  const status = options.status ?? "all";
   const pageSize = options.pageSize ?? 50;
   const page = Math.max(1, options.page ?? 1);
 
-  const filtered = buildThumbnailRows(dbPath).filter((r) =>
-    matchesView(r, view),
+  const filtered = buildThumbnailRows(dbPath).filter(
+    (r) => matchesView(r, view) && matchesStatus(r, status),
   );
 
   return {
@@ -350,7 +368,8 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
         `SELECT d.product_url AS product_url, d.url_override AS url_override,
                 COALESCE(d.name_override, d.product_name) AS name,
                 COALESCE(d.store_override, d.store) AS store,
-                p.community, p.url AS post_url, p.last_seen_at
+                p.community, p.url AS post_url, p.last_seen_at,
+                p.status AS post_status, p.status_override AS post_status_override
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
          WHERE COALESCE(d.url_override, d.product_url) IS NOT NULL
@@ -366,6 +385,8 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
       community: string;
       post_url: string;
       last_seen_at: string;
+      post_status: string;
+      post_status_override: string | null;
     }>;
 
     const rows = new Map<string, AdminThumbnailRow>();
@@ -376,6 +397,14 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
 
       const key = productKeyFromUrl(effectiveUrl);
       if (!key || rows.has(key)) continue;
+
+      /* 수동 고정이 수집기 판정보다 우선 — 공개 피드와 동일. */
+      const status: PostStatus =
+        r.post_status_override === "active" || r.post_status_override === "ended"
+          ? r.post_status_override
+          : r.post_status === "active" || r.post_status === "ended"
+            ? r.post_status
+            : "unknown";
 
       rows.set(key, {
         productKey: key,
@@ -388,6 +417,7 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
         imageOverride: null,
         attempts: 0,
         lastSeenAt: r.last_seen_at,
+        status,
       });
     }
 

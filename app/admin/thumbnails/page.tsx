@@ -2,14 +2,16 @@ import Link from "next/link";
 import { countThumbnails, listThumbnails } from "@/src/db/admin-queries";
 import { ThumbnailActions } from "@/components/admin/thumbnail-actions";
 import { firstParam, hrefFor } from "@/src/lib/query";
-import { formatTime, sourceLabel } from "@/src/lib/format";
+import { formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
 
 /*
  * 어드민 — 썸네일 관리.
  *
  * 구매링크 있는 딜을 상품 키 단위로 묶고 캐시 상태를 붙여 보여준다.
- * 탭: 전체 / 이미지 없음 / 자동 캐시 / 수동 지정. 액션은 행 단위
- * 클라이언트 아일랜드(ThumbnailActions)가 /api/admin/image로 요청.
+ * 탭: 전체 / 이미지 없음 / 자동 캐시 / 수동 지정. 딜 상태 필터
+ * (전체/진행중/종료) — 종료 딜은 수동 지정 우선순위에서 빼려고.
+ * 액션은 행 단위 클라이언트 아일랜드(ThumbnailActions)가
+ * /api/admin/image로 요청.
  */
 
 export const dynamic = "force-dynamic";
@@ -28,11 +30,19 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
     rawView === "missing" || rawView === "cached" || rawView === "override"
       ? rawView
       : "all";
+  const rawStatus = firstParam(sp.st);
+  const status =
+    rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const page = Number(firstParam(sp.page)) || 1;
 
-  const counts = countThumbnails();
-  const result = listThumbnails({ view, page, pageSize: PAGE_SIZE });
+  /* 탭 카운트는 현재 딜 상태 필터 기준 — 선별 후 규모가 보이도록. */
+  const counts = countThumbnails(status);
+  const result = listThumbnails({ view, status, page, pageSize: PAGE_SIZE });
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+
+  const current: Record<string, string> = {};
+  if (view !== "all") current.view = view;
+  if (status !== "all") current.st = status;
 
   const tabs: Array<{ value: "all" | "missing" | "cached" | "override"; label: string; count: number }> = [
     { value: "all", label: "전체", count: counts.all },
@@ -57,7 +67,7 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
             <Link
               key={tab.value}
               className={view === tab.value ? "fchip active" : "fchip"}
-              href={hrefFor("/admin/thumbnails", {}, {
+              href={hrefFor("/admin/thumbnails", current, {
                 view: tab.value === "all" ? null : tab.value,
                 page: null,
               })}
@@ -65,6 +75,37 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
               {tab.label} ({tab.count.toLocaleString("ko-KR")})
             </Link>
           ))}
+        </div>
+
+        <div className="frow">
+          <span className="flabel">딜 상태</span>
+          <Link
+            className={status === "all" ? "fchip active" : "fchip"}
+            href={hrefFor("/admin/thumbnails", current, {
+              st: null,
+              page: null,
+            })}
+          >
+            전체
+          </Link>
+          <Link
+            className={status === "active" ? "fchip active" : "fchip"}
+            href={hrefFor("/admin/thumbnails", current, {
+              st: "active",
+              page: null,
+            })}
+          >
+            진행중
+          </Link>
+          <Link
+            className={status === "ended" ? "fchip active" : "fchip"}
+            href={hrefFor("/admin/thumbnails", current, {
+              st: "ended",
+              page: null,
+            })}
+          >
+            종료
+          </Link>
         </div>
       </div>
 
@@ -77,6 +118,7 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
               <th />
               <th>상품명</th>
               <th>커뮤니티 / 게시글</th>
+              <th>딜 상태</th>
               <th>이미지 상태</th>
               <th>조작</th>
               <th>마지막 수집</th>
@@ -136,6 +178,15 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
                     </div>
                   </td>
                   <td>
+                    <span
+                      className={
+                        row.status === "ended" ? "badge ended" : "badge live"
+                      }
+                    >
+                      {statusLabel(row.status)}
+                    </span>
+                  </td>
+                  <td>
                     {row.imageOverride ? (
                       <span className="badge warn">수동</span>
                     ) : row.imageUrl ? (
@@ -168,8 +219,7 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
         <nav className="pager">
           {result.page > 1 && (
             <Link
-              href={hrefFor("/admin/thumbnails", {}, {
-                view: view === "all" ? null : view,
+              href={hrefFor("/admin/thumbnails", current, {
                 page: String(result.page - 1),
               })}
             >
@@ -181,8 +231,7 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
           </span>
           {result.page < totalPages && (
             <Link
-              href={hrefFor("/admin/thumbnails", {}, {
-                view: view === "all" ? null : view,
+              href={hrefFor("/admin/thumbnails", current, {
                 page: String(result.page + 1),
               })}
             >
