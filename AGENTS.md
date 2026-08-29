@@ -292,6 +292,8 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 
 **어드민 구매링크 오버라이드** (`deals.url_override`): 카드 관리 편집기에 구매링크 필드 추가. 오버라이드 레이어 원칙 그대로 — 파서 컬럼(`product_url`)은 수집기가 계속 갱신하고 수동 값만 `url_override`에 기록. API(`/api/admin/deal/[id]` PATCH)에서 `http(s)://` 외 값은 400 거부, 빈 값은 해제. 합성 규칙: 노출 URL = `url_override ?? product_url`, 수동 링크의 `urlType`은 `direct` 취급. **상품 병합 키(productKey)와 썸네일 캐시 키도 오버라이드 링크 기준**으로 바뀐다 — 링크 수정이 카드 정체성을 이동시키는 의도적 설계. `history.ts`·`fetch-thumbnails.ts`(og 후보·다나와 단계 모두, 오버라이드는 direct 간주)도 동일 합성. "수동수정 있음" 필터와 전체 되돌리기(clear)에 포함. 스키마는 `scripts/migrate-admin.ts`가 멱등 추가.
 
+**히스토리 오버라이드 합성 확장**(2026-08-29): `history.ts`는 구매링크만 합성하고 이름·스토어·카테고리는 파서 값을 그대로 노출하던 격차 해소 — `name/store/category_override` 우선 합성을 피드(queries.ts)와 동일하게 반영(목록·상세 공통 경로). 제외 판정도 피드와 동기화: `excluded_reason` 있으면 숨김, `exclusion_restored=1`이면 규칙 재판정 스킵. 가격 관측 시계열은 사실 기록 원칙 유지 — `price_override`는 섞지 않는다.
+
 ### v1.7 네이버 키워드 트렌드 (/trends) (2026-08-28)
 
 **데이터 소스 실측 정리**: 공식 소스는 `snxbest.naver.com` — Next.js 페이지 파싱이 아니라 차트 API가 있다: `/api/v1/snxbest/keyword/rank?ageType=ALL&categoryId=<A|50000000..>&sortType=KEYWORD_POPULAR|KEYWORD_NEW&periodType=WEEKLY[&ymd=YYYYMMDD]` + 기간 목록 `/keyword/rank/period?...`. `Accept: application/json` 필수(없으면 ymd 변형이 XML을 돌려줌). 실측 제약: ① 인기(KEYWORD_POPULAR) 차트는 당주차+직전 주차만 제공 — 과거는 빈 응답이라 **매 수집 주기마다 당주차를 쌓아 주간 누적**으로 히스토리가 생긴다(첫 실행 시 2주차 확보). ② 급상승(KEYWORD_NEW) 차트는 `ymd`로 과거 31주 조회 가능하지만 **전체('A') 카테고리만 존재** — 카테고리별 급상승은 사이트 자체가 안 준다. ③ 빈 주차 응답 `[]`를 파싱해 과거 탐색 중단 신호로 쓴다.

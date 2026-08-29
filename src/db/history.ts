@@ -1,6 +1,11 @@
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
-import { normalizeCategory, normalizeStore, type NormCategory } from "./taxonomy";
+import {
+  ALL_NORM_CATEGORIES,
+  normalizeCategory,
+  normalizeStore,
+  type NormCategory,
+} from "./taxonomy";
 import { cleanDisplayName } from "../lib/name";
 import type { PostStatus } from "./queries";
 
@@ -14,7 +19,10 @@ import type { PostStatus } from "./queries";
  * 커뮤니티 가격 관측이라는 점을 잊지 말 것 — 파서는 상품 페이지를
  * 직접 받지 않으므로, 여기 가격은 "그 시점 게시글에 적힌 값"이다.
  *
- * 노출 규칙은 특가 모음 피드와 동일하게 exclusion.ts를 통과한 딜만.
+ * 노출 규칙은 특가 모음 피드와 동일하게 제외 마커·제외 규칙을 통과한
+ * 딜만. 표시값(이름·스토어·카테고리·구매링크)은 피드와 같은
+ * 오버라이드 우선 합성 — 어드민 수정분이 여기에도 반영된다.
+ * 단 가격 관측 시계열은 사실 기록이라 가격 오버라이드를 섞지 않는다.
  */
 
 export interface PricePoint {
@@ -83,6 +91,11 @@ interface DealJoinRow {
   currency: string;
   product_url: string | null;
   url_override: string | null;
+  name_override: string | null;
+  store_override: string | null;
+  category_override: string | null;
+  excluded_reason: string | null;
+  exclusion_restored: number;
   community: string;
   title: string;
   post_url: string;
@@ -153,6 +166,8 @@ export function getPriceHistory(
       .prepare(
         `SELECT d.id AS deal_id, d.product_name, d.category, d.store,
                 d.currency, d.product_url, d.url_override,
+                d.name_override, d.store_override, d.category_override,
+                d.excluded_reason, d.exclusion_restored,
                 p.community, p.title, p.url AS post_url,
                 p.status, p.last_seen_at
          FROM deals d
@@ -193,8 +208,15 @@ export function getPriceHistory(
       const points = pointsByDeal.get(deal.deal_id) ?? [];
       if (points.length < 2) continue;
 
-      /* 무형·비핫딜은 피드와 같은 기준으로 제외. */
+      /* 어드민 제외(미복원) 딜은 노출하지 않는다 — 피드와 동일. */
+      if (deal.excluded_reason !== null) continue;
+
+      /*
+       * 무형·비핫딜 2차 방어 — 피드(queries.ts)와 같은 기준.
+       * 어드민에서 복원된 딜은 규칙을 재판정하지 않는다(복원 유지).
+       */
       if (
+        deal.exclusion_restored === 0 &&
         checkExclusion({
           community: deal.community,
           category: deal.category,
@@ -226,24 +248,28 @@ export function getPriceHistory(
           ? ((currentPrice - firstPrice) / firstPrice) * 100
           : null;
 
-      const storeNorm = normalizeStore(deal.store);
+      /* 표시값은 오버라이드 우선 합성 — 핫딜 모음 피드와 동일 원칙. */
+      const storeNorm = normalizeStore(deal.store_override ?? deal.store);
+      const catValue = deal.category_override ?? deal.category;
+      const categoryNorm = ALL_NORM_CATEGORIES.includes(
+        catValue as NormCategory,
+      )
+        ? (catValue as NormCategory)
+        : normalizeCategory(deal.community, catValue, deal.title);
 
       items.push({
         dealId: deal.deal_id,
-        name: cleanDisplayName(
-          deal.product_name ?? deal.title,
-          storeNorm,
-        ) ?? deal.title,
+        name:
+          cleanDisplayName(
+            deal.name_override ?? deal.product_name ?? deal.title,
+            storeNorm,
+          ) ?? deal.title,
         community: deal.community,
         postTitle: deal.title,
         sourceUrl: deal.post_url,
         url: deal.url_override ?? deal.product_url,
         storeNorm,
-        categoryNorm: normalizeCategory(
-          deal.community,
-          deal.category,
-          deal.title,
-        ),
+        categoryNorm,
         status: toStatus(deal.status),
         currency: deal.currency,
         currentPrice,
