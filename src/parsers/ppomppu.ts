@@ -854,6 +854,11 @@ function isPriceOnlyLine(text: string): boolean {
  *
  * 동일 마커(체감가/혜택가)를 가진 가격 라인이 3개 이상이면
  * 옵션별 가격 나열로 보고 상품으로 분리한다.
+ *
+ * 목록형 본문 예외: "최종 혜택가1,394,290원"처럼 마커 앞이
+ * 가격 라벨 수식어뿐이면(다나와 기획전 글 303752) 상품명은 그
+ * 라인에 없고, 번호 → 상품명 → (참조 가격) → 라벨 가격이 별도
+ * 라인으로 반복된다. 이 경우 직전 라인에서 상품명을 역추적한다.
  */
 function findVariantPriceLines(
   lines: BlockLine[],
@@ -865,7 +870,9 @@ function findVariantPriceLines(
     price: ParsedPrice;
   }> = [];
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
     if (!line.text || !markerRegex.test(line.text)) {
       continue;
     }
@@ -889,18 +896,75 @@ function findVariantPriceLines(
       continue;
     }
 
-    const name = isBracketLabel(line.text)
+    const inlineName = isBracketLabel(line.text)
       ? null
       : cleanText(line.text.slice(0, markerMatch.index)) ||
         null;
 
     candidates.push({
-      name: name || null,
+      name:
+        inlineName && !VARIANT_NAME_MODIFIER.test(inlineName)
+          ? inlineName
+          : findNameAbove(lines, i),
       price: parsed,
     });
   }
 
   return candidates;
+}
+
+/**
+ * 변형 가격 라인의 마커 앞 텍스트가 이들 중 하나뿐이면
+ * 상품명이 아니라 가격 라벨 수식어다 ("최종 혜택가 …").
+ */
+const VARIANT_NAME_MODIFIER = /^(?:최종|최대|평균|오늘|현재)$/;
+
+/**
+ * 목록형 본문에서 혜택가와 함께 표시되는 참조 가격 마커
+ * ("다나와 최저가 1,499,230원"). 상품 가격이 아니므로 상품명
+ * 역추적 시 건너뛰어야 하고, 상품명으로도 쓰면 안 된다.
+ */
+const REFERENCE_PRICE_MARKER =
+  /최저가|정가|정상가|할인\s*전|원래\s*가|시중가|소비자\s*가/;
+
+/**
+ * 목록형 본문(번호 → 상품명 → 참조 가격 → 혜택가 반복)에서
+ * 마커 라인의 바로 위 라인들을 거슬러 상품명을 찾는다.
+ *
+ * 가격 전용 라인, 순번("01"), 참조 가격 라인, 다른 가격 마커
+ * 라인은 건너뛴다. 4라인 안에 상품명이 없으면 null — 이름을
+ * 임의로 만들지 않는다.
+ */
+function findNameAbove(
+  lines: BlockLine[],
+  from: number,
+): string | null {
+  for (let j = from - 1; j >= 0 && from - j <= 4; j--) {
+    const text = lines[j].text;
+
+    if (!text) {
+      continue;
+    }
+
+    if (isPriceOnlyLine(text)) {
+      continue;
+    }
+
+    if (/^\d{1,3}$/.test(text)) {
+      continue;
+    }
+
+    if (
+      PRICE_MARKER.test(text) ||
+      REFERENCE_PRICE_MARKER.test(text)
+    ) {
+      continue;
+    }
+
+    return text;
+  }
+
+  return null;
 }
 
 /* =========================================================
