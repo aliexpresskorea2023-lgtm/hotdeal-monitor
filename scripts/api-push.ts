@@ -84,9 +84,9 @@ async function api(
   return JSON.parse(text);
 }
 
-async function createBlob(gitSha: string): Promise<void> {
+async function createBlob(repoPath: string, gitSha: string): Promise<void> {
   const content = git("cat-file", "blob", gitSha);
-  const r = await api("POST", `/git/blobs`, {
+  const r = await api("POST", `${repoPath}/git/blobs`, {
     content: content.toString("base64"),
     encoding: "base64",
   });
@@ -164,7 +164,7 @@ async function pushCommit(
         entries.push({ path, mode: "100644", sha: null });
       }
       const mode = gitText("ls-tree", sha, "--", newPath).split(" ")[0];
-      await createBlob(newSha);
+      await createBlob(repoPath, newSha);
       entries.push({ path: newPath, mode, sha: newSha });
     }
   }
