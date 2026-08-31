@@ -613,7 +613,18 @@ def crawl_community(
         url = cfg.list_url(page)
         log(f"목록 {page}페이지: {url}")
 
-        res = session.get(url, headers=HEADERS, timeout=30)
+        try:
+            res = session.get(url, headers=HEADERS, timeout=30)
+        except cffi_requests.exceptions.RequestException as error:
+            # DNS 미해소/접속 실패/타임아웃 — 예외가 그대로 튀면 전체
+            # 수집이 죽어 나머지 커뮤니티까지 못 돈다 (2026-08-31
+            # 내부망 전환 직후 DNS 미해소 사고). 해당 사이트만 중단.
+            log(
+                f"목록 요청 예외: {type(error).__name__} — {cfg.name} 중단."
+            )
+            stats.status = "list-failed"
+            return stats
+
         html = cfg.decode(res.content)
 
         if cfg.is_challenge(res.status_code, html):
@@ -696,7 +707,17 @@ def crawl_community(
             "collectedAt": now_iso(),
         }
 
-        res = session.get(ref["url"], headers=HEADERS, timeout=30)
+        try:
+            res = session.get(ref["url"], headers=HEADERS, timeout=30)
+        except cffi_requests.exceptions.RequestException as error:
+            # 일시 네트워크 오류 — 이번 라운드에선 관측 실패로만 기록.
+            # 엔트리를 남기지 않으면 TTL 만료 후 다음 라운드에 재시도.
+            log(
+                f"  [{ref['id']}] 상세 요청 예외: {type(error).__name__} — 스킵."
+            )
+            stats.detail_failed += 1
+            continue
+
         entry["httpStatus"] = res.status_code
 
         html = cfg.decode(res.content)
