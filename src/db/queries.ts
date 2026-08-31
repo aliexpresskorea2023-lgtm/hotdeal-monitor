@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "./driver";
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
 import { loadDeadKeys, loadResolutions } from "./link-resolution";
@@ -806,7 +806,7 @@ export function getDealFeed(
   }
 }
 
-function lastIngest(db: DatabaseSync): string | null {
+function lastIngest(db: Db): string | null {
   const row = db
     .prepare("SELECT MAX(ingested_at) AS at FROM ingest_runs")
     .get() as { at: string | null } | undefined;

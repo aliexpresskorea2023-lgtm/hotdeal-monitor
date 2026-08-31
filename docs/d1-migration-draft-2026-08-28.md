@@ -110,3 +110,47 @@
 - 커트오버 배포 실패/이상: 직전 Vercel 배포 re-promote (~1분) — 직전 배포는 커트오버 직전 동결된 로컬 DB를 읽으므로 데이터는 커트오버 시점 상태로 회귀.
 - D1 자체 장애: 쓰기만 실패하고 읽기 캐시/재시도로 버팀, 수집기는 재실행 멱등으로 복구.
 - 최종 안전망: 로컬 `data/hotdeal.db`는 커트오버 후에도 삭제하지 않고 보관(읽기 전용 아카이브).
+
+## 9. D0 실측 결과 (2026-08-31 완료)
+
+### 9-1. 지연
+
+| 경로 | 중앙값 | 비고 |
+|---|---|---|
+| 맥(집) → D1 REST | 49ms | SQL 자체 ~0.15ms, 전부 네트워크 RTT |
+| Vercel iad1 → D1 | 262ms | 기본 리전 — 채택 불가 |
+| Vercel icn1 → D1 | **55ms** (p90 88ms, min 48ms, max 1068ms 콜드 스파이크) | 두 프로젝트 모두 `serverlessFunctionRegion: icn1` 전환 완료 |
+| 배치 쓰기 (200-INSERT 1요청) | ~120ms | 배치 1회당 지연은 단건과 거의 동일 |
+
+결론: 렌더당 왕복 1~2회면 페이지 지연 증가 ~50~110ms로 허용 범위. `Promise.all` 병렬보다
+**한 요청에 SQL 배열 배치**가 효과적(배치는 단건과 지연이 같으므로).
+
+### 9-2. 트랜잭션 시맨틱
+
+- **한 요청의 다중 구문은 암묵적 원자 트랜잭션** — 성공/실패 혼성 배치는 전부 롤백됨을 실측 확인.
+- SQL `BEGIN`/`COMMIT`/`ROLLBACK`은 **거부**됨 ("use state.storage.transaction()").
+- **파라미터(`?`)는 단일 구문 요청에서만 허용** — 다중 구문 + params는 400
+  ("params with multiple statements is not supported"). 배치에서 파라미터는 인라인 직렬화 필요.
+
+어댑터 설계 반영: 기존 `exec("BEGIN")`…`exec("COMMIT")` 구간은 D1에서 BEGIN/COMMIT 제거 후
+구문 버퍼로 모아 단일 요청(암묵적 트랜잭션)으로 발송. 파라미터 직렬화는 이스케이프 안전한
+인라인 리터럴로 변환.
+
+### 9-3. 기타 호환 사항
+
+- `foreign_keys` 기본 **ON** — 코드 변경 불필요.
+- `PRAGMA journal_mode=WAL` 등은 `SQLITE_AUTH`로 거부 → 어댑터에서 스킵(무시).
+  단 `PRAGMA table_info(...)`는 허용(존재 않는 테이블엔 오류 없이 0행).
+- 일부 SQLite 함수 차단(`sqlite_version()` 등) — 코드에서 미사용, 영향 없음.
+- 응답 형태: 구문별 `{results, meta}` 배열. `meta`에 `changes`/`last_row_id`/`changed_db`/`duration`.
+- **동기 브리지 제약(실측)**: 워커→메인 MessagePort 메시지는 수신 스레드의
+  이벤트 루프를 통해서만 배달된다. 메인 스레드가 `Atomics.wait`으로 막혀 있으면
+  배달이 무한 지연돼 `receiveMessageOnPort`가 영원히 `undefined`.
+  → 결과를 SharedArrayBuffer에 직접 쓰고 플래그+`Atomics.notify`로 알리는 방식만 성립.
+- **스키마 적용 완료(8/31)**: 스모크 테스트에서 `schema.sql` 전체를 단일 요청으로
+  D1에 적용(13테이블 중 `_cf_KV`는 CF 내부용). 2단계 벌크 수입은 데이터만 적재하면 된다.
+
+### 9-4. 자격증명
+
+- `CF_ACCOUNT_ID` / `CF_API_TOKEN` / `CF_D1_DATABASE_ID` 발급 완료, 로컬 `.env.local` 기록 확인
+  (`.env*`는 .gitignore 대상 — 커밋 금지 유지).

@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "./driver";
 
 /*
  * 단축링크 해석·구매링크 점검 공용 계층.
@@ -36,7 +36,7 @@ export function isShortLinkUrl(raw: string): boolean {
  * 테이블 미생성 환경(구 스냅샷 읽기 전용)은 빈 지도로 흡수.
  */
 export function loadResolutions(
-  db: DatabaseSync,
+  db: Db,
   urls: Iterable<string | null | undefined>,
 ): Map<string, string> {
   const targets = [
@@ -76,7 +76,7 @@ export function loadResolutions(
 }
 
 /** dead=1(확인된 사망 링크) 판정 키 집합 — 피드 상태 합성용. */
-export function loadDeadKeys(db: DatabaseSync): Set<string> {
+export function loadDeadKeys(db: Db): Set<string> {
   try {
     const rows = db
       .prepare(`SELECT product_key FROM link_checks WHERE dead = 1`)

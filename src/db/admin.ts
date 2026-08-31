@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "./driver";
 import { nowKstIso, openDb } from "./index";
 
 /*
@@ -13,12 +13,12 @@ import { nowKstIso, openDb } from "./index";
  * *_override 컬럼에만 기록하고, 노출은 queries.ts가 합성한다.
  */
 
-export function openAdminDb(): DatabaseSync {
+export function openAdminDb(): Db {
   return openDb();
 }
 
 export function audit(
-  db: DatabaseSync,
+  db: Db,
   action: string,
   entity: string,
   entityId: number,
@@ -76,7 +76,7 @@ const DEAL_PATCH_FIELDS = [
 ] as const;
 
 /** 딜 오버라이드/하이드 갱신. 변경 필드만 감사 기록. */
-export function patchDeal(db: DatabaseSync, dealId: number, patch: DealPatch): void {
+export function patchDeal(db: Db, dealId: number, patch: DealPatch): void {
   const current = db
     .prepare(
       `SELECT name_override, price_override, category_override,
@@ -122,7 +122,7 @@ export function patchDeal(db: DatabaseSync, dealId: number, patch: DealPatch): v
 
 /** 제외 복원 / 복원 철회. */
 export function setDealRestored(
-  db: DatabaseSync,
+  db: Db,
   dealId: number,
   restored: boolean,
 ): void {
@@ -155,7 +155,7 @@ export interface PostPatch {
 
 /** 게시글 상태 지정/하이드 갱신. */
 export function patchPost(
-  db: DatabaseSync,
+  db: Db,
   postId: number,
   patch: PostPatch,
 ): void {
@@ -200,7 +200,7 @@ export function patchPost(
 
 /** 관측 시점 가격 수정. */
 export function patchObservation(
-  db: DatabaseSync,
+  db: Db,
   observationId: number,
   dealPrice: number,
 ): void {
@@ -233,7 +233,7 @@ export function patchObservation(
 
 /** 관측 시점 삭제 (오염 데이터 제거용 — 물리 삭제 확정). */
 export function deleteObservation(
-  db: DatabaseSync,
+  db: Db,
   observationId: number,
 ): void {
   const current = db
@@ -256,7 +256,7 @@ export function deleteObservation(
 
 /** 썸네일 수동 지정 / 해제. */
 export function setImageOverride(
-  db: DatabaseSync,
+  db: Db,
   productKey: string,
   url: string | null,
 ): void {
@@ -281,7 +281,7 @@ export function setImageOverride(
 }
 
 /** 썸네일 캐시 초기화 (재시도할 수 있게 행 삭제). */
-export function resetImageCache(db: DatabaseSync, productKey: string): void {
+export function resetImageCache(db: Db, productKey: string): void {
   db.prepare(`DELETE FROM product_images WHERE product_key = ?`).run(
     productKey,
   );
