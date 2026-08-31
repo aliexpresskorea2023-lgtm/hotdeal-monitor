@@ -225,6 +225,9 @@ function parseJsonArray(raw: string | null): string[] {
  *   단축링크 해석 결과에 붙는 수십 개의 제휴 추적 파라미터가
  *   같은 상품의 키를 가르지 않도록. 정체성 파라미터가 없는 주소는
  *   일반 규칙(추적 제거 + 나머지 보존)으로 폴백
+ * - 호스트·경로 별칭 정규화 (PATH_ALIASES) — 같은 상품을 다른
+ *   주소 체계로 서비스하는 스토어(오늘의집 등)를 하나의 키로
+ *   모은다. 파라미터 정체성으로 해결되지 않는 경우용
  * - 파싱 실패(이상한 URL) 시 null → 호출 쪽에서 단독 카드로 처리
  */
 const TRACKING_PARAM =
@@ -254,6 +257,40 @@ function canonicalForHost(parsed: URL): void {
   parsed.search = `${kept}=${encodeURIComponent(value ?? "")}`;
 }
 
+/**
+ * 호스트·경로 별칭 체계 정규화.
+ *
+ * 파라미터가 아니라 경로에 박힌 번호가 정체성인데, 같은 상품을
+ * 주소 체계 두 개로 서비스하는 스토어가 있다. (호스트, 경로)를
+ * 하나의 표준 (호스트, 경로)로 접는다.
+ *
+ * 오늘의집: 상품 번호 하나를 두 주소로 서비스.
+ *   ohou.se/productions/{번호}[/selling]
+ *   store.ohou.se/goods/{번호}[#옵션번호]
+ * 근거: DB에 두 형태로 같이 잡힌 같은 번호 쌍들이 동일한
+ * 대표 이미지를 공유 (2271497·4188879·3727926). 5408(오늘의집
+ * 직접링크)·5482(퀘사존 경유)가 3727926 하나를 두고 찢어졌던
+ * 사고의 원인. 옵션 프래그먼트(#…)는 애초에 키에 안 들어온다.
+ */
+const PATH_ALIASES: Array<{
+  hosts: string[];
+  pattern: RegExp;
+  canonical: (
+    match: RegExpMatchArray,
+  ) => { host: string; path: string };
+}> = [
+  {
+    hosts: ["ohou.se", "www.ohou.se", "m.ohou.se"],
+    pattern: /^\/productions\/(\d+)(?:\/|$)/,
+    canonical: (m) => ({ host: "ohou.se", path: `/productions/${m[1]}` }),
+  },
+  {
+    hosts: ["store.ohou.se"],
+    pattern: /^\/goods\/(\d+)(?:\/|$)/,
+    canonical: (m) => ({ host: "ohou.se", path: `/productions/${m[1]}` }),
+  },
+];
+
 export function productKeyFromUrl(raw: string): string | null {
   try {
     const parsed = new URL(raw);
@@ -268,8 +305,29 @@ export function productKeyFromUrl(raw: string): string | null {
 
     parsed.searchParams.sort();
 
-    const host = parsed.host.toLowerCase();
-    const path = parsed.pathname.replace(/\/+$/, "");
+    let host = parsed.host.toLowerCase();
+    let path = parsed.pathname.replace(/\/+$/, "");
+
+    /* 별칭 주소 체계 접기 — 같은 상품을 가리키는 다른 주소가
+     * 하나의 키로 모이도록 (호스트, 경로)를 표준형으로 교체. */
+    for (const alias of PATH_ALIASES) {
+      if (!alias.hosts.includes(host)) {
+        continue;
+      }
+
+      const match = path.match(alias.pattern);
+
+      if (!match) {
+        continue;
+      }
+
+      const canonical = alias.canonical(match);
+
+      host = canonical.host;
+      path = canonical.path;
+      break;
+    }
+
     const query = parsed.searchParams.toString();
 
     return `${host}${path}${query ? `?${query}` : ""}`;
