@@ -215,7 +215,16 @@ if [[ "$ingest_rc" -eq 0 ]]; then
       if git push origin HEAD >>"$LOG_FILE" 2>&1; then
         log "[5/5] DB 스냅샷 커밋·푸시 완료"
       else
-        log "[5/5] push 실패 — 커밋된 스냅샷으로 배포는 진행"
+        # 사내망 보안 장비가 receive-pack 팩 업로드를 400으로 막는
+        # 환경(2026-08-31 실측) 폴백 — Git Database API로 재전송.
+        # 성공 시 커밋이 원격에 생겨 이어지는 git 배포 promote 경로도
+        # 다시 유효해진다.
+        log "[5/5] push 실패 — API 폴백 푸시 시도"
+        if npx tsx scripts/api-push.ts >>"$LOG_FILE" 2>&1; then
+          log "[5/5] API 폴백 푸시 완료"
+        else
+          log "[5/5] API 폴백 푸시도 실패 — 커밋된 스냅샷으로 배포는 진행"
+        fi
       fi
     else
       log "[5/5] 커밋 실패 — 배포는 계속 진행"
