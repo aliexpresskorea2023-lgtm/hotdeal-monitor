@@ -240,6 +240,12 @@ if [[ "$ingest_rc" -eq 0 ]]; then
     AUTH_JSON="$HOME/Library/Application Support/com.vercel.cli/auth.json"
     VTOKEN="" VTEAM="" VPROJ=""
     if [[ -f "$AUTH_JSON" ]] && command -v python3 >/dev/null 2>&1; then
+      # OAuth 세션 토큰에는 expiresAt이 있고, --token으로 그대로 주입하면
+      # 만료 시 자동 갱신이 일어나지 않는다(실측: 2026-08-29 19:42 만료
+      # 후 2.5일간 배포 전부 Not authorized 실패). 토큰 없이 한 번 호출하면
+      # CLI가 refreshToken으로 auth.json을 재발급하므로 추출 직전 워밍업.
+      "$VERCEL" whoami >/dev/null 2>&1 \
+        || log "[5/5] vercel 세션 갱신 실패 — 기존 저장 토큰으로 시도"
       VTOKEN="$(python3 -c "import json;print(json.load(open('$AUTH_JSON'))['token'])" 2>/dev/null || true)"
       if [[ -f "$PROJECT_JSON" ]]; then
         VTEAM="$(python3 -c "import json;print(json.load(open('$PROJECT_JSON'))['orgId'])" 2>/dev/null || true)"
