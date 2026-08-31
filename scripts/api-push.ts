@@ -109,12 +109,14 @@ interface Meta {
 
 function metaOf(sha: string): Meta {
   const SEP = "\u0001";
-  const raw = gitText(
+  /* trim 금지 — %B 끝 개행이 커밋 오브젝트 바이트의 일부라 그대로
+   * 전송해야 SHA가 보존된다 (깃 로그가 붙이는 패딩 한 개만 제거). */
+  const raw = git(
     "log",
     "-1",
     `--format=%T${SEP}%P${SEP}%an${SEP}%ae${SEP}%aI${SEP}%cn${SEP}%ce${SEP}%cI${SEP}%B`,
     sha,
-  );
+  ).toString("utf-8");
   const parts = raw.split(SEP);
   return {
     tree: parts[0],
