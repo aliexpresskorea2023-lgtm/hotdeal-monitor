@@ -71,7 +71,7 @@ export interface TrendKeywordView {
   newsCount: number | null;
   newsSample: TrendNewsItem[];
   youtubeCount: number | null;
-  /** 관련 영상 중 조회수 선두 (한국 리전 수집). */
+  /** 관련 영상 중 조회수 선두 (한국 리전·한국어·수집 주차 게시 기준). */
   youtubeTop: TrendYouTubeTop | null;
   /** 네이버 검색광고 월간 모바일 쿼리수. */
   mobileQc: number | null;
@@ -138,13 +138,31 @@ export function getTrendWeeks(
       return [];
     }
 
-    return rows.map((r) => ({
-      chartType,
-      ymd: r.ymd,
-      month: r.month,
-      week: r.week,
-      label: weekLabel(r.ymd, r.month, r.week),
-    }));
+    /*
+     * 라벨 중복 접기 — 사이트가 서로 다른 주차 키에 같은
+     * 월·주차 라벨을 붙이는 경우가 있다(실측: 20260827·20260830
+     * 모두 "8월 4주차"). 데이터는 그대로 두고 열람 선택지만
+     * 최신 주차(ymd 내림차순 첫 번째)로 대표한다 (2026-09-01 결정).
+     */
+    const seenLabels = new Set<string>();
+    const weeks: TrendWeek[] = [];
+
+    for (const r of rows) {
+      const label = weekLabel(r.ymd, r.month, r.week);
+
+      if (seenLabels.has(label)) continue;
+
+      seenLabels.add(label);
+      weeks.push({
+        chartType,
+        ymd: r.ymd,
+        month: r.month,
+        week: r.week,
+        label,
+      });
+    }
+
+    return weeks;
   } finally {
     db.close();
   }

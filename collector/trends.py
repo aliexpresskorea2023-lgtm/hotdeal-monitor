@@ -14,7 +14,8 @@
   - 관련 기사수: Google News RSS 검색 (무키, 상한 100건).
   - 검색량: 네이버 검색광고 키워드도구 (키 필요, .env.local).
   - 관련 유튜브 콘텐츠수: YouTube Data API search (키 필요,
-    호출당 100 유닛이라 기본 상한 40건/실행).
+    호출당 100 유닛이라 기본 상한 90건/실행). 리전=한국·언어=한국어·
+    게시 기간=키워드 수집 주차로 제한 (2026-09-01).
 
 출력은 매니퍼스트 JSON 하나 (data/crawls/trends/). DB 쓰기는
 scripts/ingest-trends.ts가 담당한다 (수집 = 전송 계층 원칙).
@@ -237,6 +238,33 @@ def load_latest_week_pairs() -> tuple[set, set]:
         db.close()
 
 
+def load_keyword_ranks() -> dict:
+    """(ymd, keyword) → 주차 내 최고 순위 — 유튜브 보강 순위 우선순위용.
+
+    쿼터 상한(기본 90건)이 주간 키워드(~200개)보다 작으므로, 아무
+    순서나 채우지 않고 랭킹 선두부터 채운다.
+    """
+    if not DB_PATH.exists():
+        return {}
+
+    try:
+        db = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return {}
+
+    try:
+        try:
+            rows = db.execute(
+                "SELECT ymd, keyword, MIN(rank)"
+                " FROM trend_keywords GROUP BY ymd, keyword"
+            ).fetchall()
+            return {(ymd, kw): rank for ymd, kw, rank in rows}
+        except sqlite3.OperationalError:
+            return {}
+    finally:
+        db.close()
+
+
 # ── snxbest 차트 API ─────────────────────────────────────────────
 
 
@@ -418,14 +446,37 @@ def fetch_ads_batch(keywords: list, creds: dict) -> dict:
 # ── YouTube Data API (키 필요) ───────────────────────────────────
 
 
-def fetch_youtube_count(keyword: str, api_key: str) -> tuple[int | None, dict | None]:
+def week_window_utc(ymd: str) -> tuple[str, str]:
+    """ymd(주차 시작일 YYYYMMDD) → [주차 시작, +7일) 게시 기간.
+
+    YouTube search의 publishedAfter/publishedBefore용 RFC3339 UTC —
+    관련 영상수·조회수 선두 영상을 키워드 수집 주차와 같은 기간으로
+    제한한다 (2026-09-01 결정). 예: 수집 주차가 8월 4주차(20260830)
+    → 그 주에 게시된 영상만 집계.
+    """
+    start = datetime.strptime(ymd, "%Y%m%d").replace(tzinfo=KST)
+    end = start + timedelta(days=7)
+
+    def fmt(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    return fmt(start), fmt(end)
+
+
+def fetch_youtube_count(
+    keyword: str, api_key: str, ymd: str
+) -> tuple[int | None, dict | None]:
     """search 호출 1회(100유닛)로 관련 영상수 추정치 + 조회수 선두 영상 조회.
 
     - order=viewCount: 첫 결과가 관련 영상 중 조회수 최고. 정렬만 바꾼
       같은 쿼리라 개수 추정치도 함께 얻는다 — 추가 호출/쿼터 없음.
     - regionCode=KR + relevanceLanguage=ko: 수집 범위를 한국 리전·한국어
       콘텐츠로 제한한다 (2026-08-28 사용자 요청).
+    - publishedAfter/publishedBefore: 기간을 키워드 수집 주차(ymd 시작
+      +7일)로 제한한다 (2026-09-01 결정) — 수치의 정의는 "해당 주차에
+      게시된 관련 영상 수".
     """
+    after, before = week_window_utc(ymd)
     query = urllib.parse.urlencode(
         {
             "part": "snippet",
@@ -434,6 +485,8 @@ def fetch_youtube_count(keyword: str, api_key: str) -> tuple[int | None, dict | 
             "order": "viewCount",
             "regionCode": "KR",
             "relevanceLanguage": "ko",
+            "publishedAfter": after,
+            "publishedBefore": before,
             "q": keyword,
             "key": api_key,
         }
@@ -441,7 +494,7 @@ def fetch_youtube_count(keyword: str, api_key: str) -> tuple[int | None, dict | 
     resp = session.get(f"{YT_SEARCH}?{query}", timeout=30)
 
     if resp.status_code in (403, 429):
-        # 쿼터 소진 등 — 이번 실행은 유튜브 수집 중단 (내일 재시도).
+        # 쿼터 소진 등 — 이번 실행은 유튜브 수집 중단 (다음 실행에 재시도).
         raise PermissionError(resp.text[:200])
 
     resp.raise_for_status()
@@ -476,8 +529,8 @@ def main() -> int:
     parser.add_argument(
         "--youtube-limit",
         type=int,
-        default=40,
-        help="유튜브 보강 상한 (호출당 100유닛, 일 10,000유닛)",
+        default=90,
+        help="유튜브 보강 상한 (호출당 100유닛, 일 10,000유닛 — 주 1회 수집 기준)",
     )
     args = parser.parse_args()
 
@@ -636,9 +689,20 @@ def main() -> int:
 
     yt_targets: list[tuple[str, str]] = []
     if yt_key:
-        fresh = sorted(base_pairs - state["yt_done"])
+        ranks = load_keyword_ranks()
+        # 이번 실행 수집분(아직 DB 미반영)도 순위 참조에 합산.
+        for r in keywords_out:
+            pair = (r["ymd"], r["keyword"])
+            best = ranks.get(pair)
+            if best is None or r["rank"] < best:
+                ranks[pair] = r["rank"]
+
+        def by_rank(pair: tuple[str, str]):
+            return (ranks.get(pair, 999), pair[1])
+
+        fresh = sorted(base_pairs - state["yt_done"], key=by_rank)
         # 미수집분 다음으로 인기 영상 없는 기존 수집분을 백필 (쿼터 남는 만큼).
-        refetch = sorted(state["yt_refetch"] - set(fresh))
+        refetch = sorted(state["yt_refetch"] - set(fresh), key=by_rank)
         yt_targets = (fresh + refetch)[: args.youtube_limit]
 
     ads_targets: list[tuple[str, str]] = []
@@ -683,7 +747,7 @@ def main() -> int:
         if yt_stopped:
             break
         try:
-            count, top = fetch_youtube_count(pair[1], yt_key)
+            count, top = fetch_youtube_count(pair[1], yt_key, pair[0])
             entry = slot(pair)
             entry["youtube_count"] = count
             # {} = 결과 없음 마커 — 재수집 대상에서 영구 제외.

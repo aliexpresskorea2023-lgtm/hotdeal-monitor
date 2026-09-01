@@ -122,7 +122,7 @@ export default async function TrendsPage({ searchParams }: PageProps) {
         <div className="page-head">
           <div>
             <h1>네이버 키워드 트렌드</h1>
-            <p>네이버 쇼핑 주간 키워드 랭킹 — 수집 주기마다 갱신됩니다.</p>
+            <p>네이버 쇼핑 주간 키워드 랭킹 — 주 1회 수집으로 갱신됩니다.</p>
           </div>
         </div>
         <div className="empty-note">
@@ -157,8 +157,8 @@ export default async function TrendsPage({ searchParams }: PageProps) {
         <div>
           <h1>네이버 키워드 트렌드</h1>
           <p>
-            네이버 쇼핑 주간 {TREND_CHART_LABEL[chartType]} 랭킹 — 수집
-            주기마다 갱신됩니다.
+            네이버 쇼핑 주간 {TREND_CHART_LABEL[chartType]} 랭킹 — 주 1회
+            수집으로 갱신됩니다.
           </p>
         </div>
         <span className="head-count">
@@ -304,7 +304,7 @@ export default async function TrendsPage({ searchParams }: PageProps) {
                         )}
                       </p>
                       <p className="qc-detail">
-                        유튜브: 관련 콘텐츠 수 추정치{" "}
+                        유튜브: 해당 주차 게시 관련 영상 수 추정치{" "}
                         {row.youtubeCount === null
                           ? "—"
                           : `${qcLabel(row.youtubeCount)}건`}
@@ -336,7 +336,8 @@ export default async function TrendsPage({ searchParams }: PageProps) {
           <p className="source-note">
             출처: 네이버 쇼핑 베스트 주간 랭킹 · 기사수: Google News
             RSS(상한 100) · 검색량: 네이버 검색광고 키워드도구 · 유튜브:
-            관련 콘텐츠(영상) 수 추정치 — YouTube Data API, 한국 리전 기준
+            해당 주차 게시 관련 영상 수 추정치 — YouTube Data API, 한국
+            리전·한국어 기준
           </p>
         </>
       )}

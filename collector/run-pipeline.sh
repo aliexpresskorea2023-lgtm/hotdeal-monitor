@@ -40,6 +40,11 @@ LOG_DIR="$ROOT/data/logs"
 LOG_FILE="$LOG_DIR/pipeline.log"
 LOCK_DIR="$ROOT/data/.pipeline.lock"
 
+# 키워드 트렌드 수집 요일 — 주 1회 수집 (2026-09-01 결정).
+# 요일은 미정(수요일 유력)이라 확정은 사용자 지시 대기. 1=월 ... 7=일.
+# 수동 수집은 이 값과 무관하게 trends.py 직접 실행으로 언제든 가능.
+TRENDS_WEEKDAY=3
+
 mkdir -p "$LOG_DIR"
 
 # ---- 잠금 -----------------------------------------------
@@ -92,15 +97,20 @@ case "$collect_rc" in
   *) log "[1/4] collect 비정상 종료 (exit $collect_rc). 그래도 ingest는 실행" ;;
 esac
 
-# ---- 2단계: 키워드 트렌드 수집 (베스트 에포트) ---------------
+# ---- 2단계: 키워드 트렌드 수집 (주 1회, 베스트 에포트) ---------------
 # snxbest.naver.com 주간 쇼핑 키워드 랭킹 + 기사수 등 보강.
+# 주 1회 수집(2026-09-01 결정) — TRENDS_WEEKDAY 요일 실행에만 돌린다.
 # 매니퍼스트는 3단계의 ingest-trends.ts가 적재한다.
 # 실패해도 핫딜 파이프라인과는 무관하므로 계속 진행한다.
-log "[2/5] trends.py 실행"
-if "$PYTHON" "$ROOT/collector/trends.py" >>"$LOG_FILE" 2>&1; then
-  log "[2/5] 키워드 트렌드 수집 완료"
+if [[ "$(date +%u)" == "$TRENDS_WEEKDAY" ]]; then
+  log "[2/5] trends.py 실행 (주간 수집일)"
+  if "$PYTHON" "$ROOT/collector/trends.py" >>"$LOG_FILE" 2>&1; then
+    log "[2/5] 키워드 트렌드 수집 완료"
+  else
+    log "[2/5] 키워드 트렌드 수집 실패 — 계속 진행 (베스트 에포트)"
+  fi
 else
-  log "[2/5] 키워드 트렌드 수집 실패 — 계속 진행 (베스트 에포트)"
+  log "[2/5] 키워드 트렌드 수집 생략 (주 1회 — 수집 요일 아님)"
 fi
 
 # ---- 3단계: ingest --------------------------------------
