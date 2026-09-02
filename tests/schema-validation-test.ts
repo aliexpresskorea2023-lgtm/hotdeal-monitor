@@ -444,6 +444,8 @@ const quasarzoneFixtures = [
   { file: "quasarzone-1981955.html", no: "1981955" },
   { file: "quasarzone-1981594.html", no: "1981594" },
   { file: "quasarzone-1980739.html", no: "1980739" },
+  // v2 뷰 템플릿(h1.v2-view-head__title) — 제목/등록일/스탯 셀렉터 폴백 검증
+  { file: "quasarzone-v2-1966305.html", no: "1966305" },
 ];
 
 const quasarzoneResults: Record<
@@ -609,6 +611,45 @@ const quasarzoneAssertions: Array<[string, boolean]> = [
     quasarzoneResults["1980739"].discount.codes.includes("FUDU2KR27") &&
       normalizeQuasarzoneDeal(quasarzoneResults["1980739"])[0]?.purchase
         .itemId === "1005012808698478",
+  ],
+
+  // 1966305: v2 뷰 템플릿(h1.v2-view-head__title) — 빈 상품명 재발 방지 회귀
+  [
+    "quasarzone v2 1966305: v2 템플릿에서도 제목 추출 (빈 제목 금지)",
+    quasarzoneResults["1966305"].title ===
+      "[지마켓] ASUS 지포스 RTX 5060 LP BRK OC D7 8GB 인텍앤컴퍼니",
+  ],
+  [
+    "quasarzone v2 1966305: 상품명/[스토어] 태그 분리 (빈 상품명 금지)",
+    quasarzoneResults["1966305"].products[0]?.name ===
+      "ASUS 지포스 RTX 5060 LP BRK OC D7 8GB 인텍앤컴퍼니" &&
+      quasarzoneResults["1966305"].products[0]?.store === "지마켓",
+  ],
+  [
+    "quasarzone v2 1966305: 등록일은 JSON-LD datePublished (초 포함 ISO)",
+    quasarzoneResults["1966305"].postedAt === "2026-07-01T19:26:36+09:00",
+  ],
+  [
+    "quasarzone v2 1966305: 상태라벨(v2 h1 span.label done) → ended",
+    quasarzoneResults["1966305"].status === "ended" &&
+      quasarzoneResults["1966305"].sourceMeta.statusLabel === "종료",
+  ],
+  [
+    "quasarzone v2 1966305: stats v2-meta 폴백 (조회/추천/댓글)",
+    quasarzoneResults["1966305"].stats.views === 9324 &&
+      quasarzoneResults["1966305"].stats.recommendations === 12 &&
+      quasarzoneResults["1966305"].stats.comments === 12,
+  ],
+  [
+    "quasarzone v2 1966305: v2에는 ca_name 없음 → category null (의도)",
+    quasarzoneResults["1966305"].category === null,
+  ],
+  [
+    "quasarzone v2 1966305: 폼 가격/URL은 템플릿 무관 정상 파싱",
+    quasarzoneResults["1966305"].products[0]?.price === 467400 &&
+      quasarzoneResults["1966305"].products[0]?.currency === "KRW" &&
+      quasarzoneResults["1966305"].products[0]?.url ===
+        "https://item.gmarket.co.kr/Item?goodsCode=4125623356",
   ],
 ];
 

@@ -160,8 +160,8 @@ function upsertPost(
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(community, post_id) DO UPDATE SET
        url = excluded.url,
-       title = excluded.title,
-       posted_at = excluded.posted_at,
+       title = COALESCE(NULLIF(excluded.title, ''), posts.title),
+       posted_at = COALESCE(excluded.posted_at, posts.posted_at),
        status = excluded.status,
        views = excluded.views,
        recommendations = excluded.recommendations,
@@ -211,10 +211,10 @@ function upsertDeal(db: Db, postRowid: number, seq: number, deal: Deal): number 
        discount_alternatives, discount_description
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(post_rowid, seq) DO UPDATE SET
-       product_name = excluded.product_name,
-       normalized_name = excluded.normalized_name,
-       category = excluded.category,
-       store = excluded.store,
+       product_name = COALESCE(NULLIF(excluded.product_name, ''), deals.product_name),
+       normalized_name = COALESCE(NULLIF(excluded.normalized_name, ''), deals.normalized_name),
+       category = COALESCE(NULLIF(excluded.category, ''), deals.category),
+       store = COALESCE(NULLIF(excluded.store, ''), deals.store),
        product_id = excluded.product_id,
        item_id = excluded.item_id,
        deal_price = excluded.deal_price,

@@ -261,17 +261,32 @@ export function parseQuasarzoneHtml(
  * ======================================================= */
 
 function extractTitle($: cheerio.CheerioAPI): string {
-  const heading = $("h1.title").first();
+  /*
+   * 퀘이사존은 게시글 뷰 템플릿을 v2로 전환 중이다. 일부 글은
+   * 옛 `h1.title`, 일부는 새 `h1.v2-view-head__title`로 렌더된다
+   * (2026-09 실측: 같은 글도 크롤 시점에 따라 두 템플릿 중 하나로
+   * 서빙됨). 옛 셀렉터만 찾으면 v2 글의 제목·상품명이 빈 값이 되어
+   * 딜이 이름 없이 저장된다. 두 셀렉터를 모두 보고, 둘 다 없으면
+   * 두 템플릿에 공통으로 존재하는 og:title로 폴백한다.
+   */
+  const heading = $("h1.title, h1.v2-view-head__title").first();
 
-  if (heading.length === 0) {
-    return "";
+  if (heading.length > 0) {
+    /* 상태 라벨(진행중/종료)은 제목 텍스트가 아니다. */
+    const clone = heading.clone();
+    clone.find("span.label").remove();
+
+    const text = cleanText(clone.text());
+
+    if (text) {
+      return text;
+    }
   }
 
-  /* 상태 라벨(진행중/종료)은 제목 텍스트가 아니다. */
-  const clone = heading.clone();
-  clone.find("span.label").remove();
-
-  return cleanText(clone.text());
+  /* og:title 폴백 — 두 템플릿 모두에 깨끗한 제목이 들어 있다. */
+  return cleanText(
+    $('meta[property="og:title"]').attr("content") ?? "",
+  );
 }
 
 /** 제목 머리 "[스토어]" 태그를 제거한 상품명을 만든다. */
@@ -288,20 +303,39 @@ function storeTagFromTitle(title: string): string | null {
 }
 
 function extractCategory($: cheerio.CheerioAPI): string | null {
+  /*
+   * 게시판 카테고리(예: "생활/식품")는 옛 템플릿의 div.ca_name에만
+   * 있다. v2 템플릿에는 카테고리 마크업이 아예 없다(2026-09 실측).
+   * v2 글에서는 null이 되며 이는 의도된 동작이다 — category는
+   * nullable이고 표시 계층에서 taxonomy.normalizeCategory가
+   * community+title로 보완한다.
+   */
   const value = cleanText($("div.ca_name").first().text());
 
   return value || null;
 }
 
 function extractStatusLabel($: cheerio.CheerioAPI): string | null {
+  /* 상태 라벨은 옛 템플릿 h1.title, v2 템플릿 h1.v2-view-head__title
+   * 안에 span.label("진행중"/"종료" 등)로 들어 있다. 둘 다 본다. */
   const value = cleanText(
-    $("h1.title span.label").first().text(),
+    $("h1.title span.label, h1.v2-view-head__title span.label")
+      .first()
+      .text(),
   );
 
   return value || null;
 }
 
 function extractPostedAt($: cheerio.CheerioAPI): string | null {
+  /*
+   * 등록일 추출은 템플릿별로 출처가 다르다.
+   * 1) 옛 템플릿: .market-info-view-wrap .util-area span.date
+   *    ("2026.08.25 15:52")
+   * 2) v2 템플릿: JSON-LD datePublished ("2026-07-01T19:26:36+09:00")
+   *    — 년도까지 포함된 전체 ISO라 가장 신뢰 높다.
+   * 3) v2 폴백: span.v2-view-head__time ("07.01 19:26") — 년도 없음.
+   */
   const value = cleanText(
     $(".market-info-view-wrap .util-area span.date")
       .first()
@@ -312,17 +346,91 @@ function extractPostedAt($: cheerio.CheerioAPI): string | null {
     /^(\d{4})\.(\d{2})\.(\d{2})\.?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
   );
 
+  if (match) {
+    const [, year, month, day, hour, minute, second] = match;
+
+    const time = [
+      (hour ?? "00").padStart(2, "0"),
+      minute ?? "00",
+      second ?? "00",
+    ].join(":");
+
+    return `${year}-${month}-${day}T${time}+09:00`;
+  }
+
+  const jsonLd = extractJsonLdDatePublished($);
+
+  if (jsonLd) {
+    return jsonLd;
+  }
+
+  return parseV2HeadTime(cleanText($(".v2-view-head__time").first().text()));
+}
+
+/**
+ * JSON-LD(script[type="application/ld+json"])의 datePublished를
+ * 추출한다. v2 템플릿에는 년도 포함 전체 ISO가 들어 있다.
+ * 값은 "+09:00" 오프셋 ISO 형태일 때만 그대로 쓴다(정규화 보증).
+ */
+function extractJsonLdDatePublished(
+  $: cheerio.CheerioAPI,
+): string | null {
+  let result: string | null = null;
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (result !== null) {
+      return;
+    }
+
+    const text = $(el).html() ?? "";
+    const match = text.match(/"datePublished"\s*:\s*"([^"]+)"/);
+    const iso = match?.[1];
+
+    if (
+      iso &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+        iso,
+      )
+    ) {
+      result = iso;
+    }
+  });
+
+  return result;
+}
+
+/**
+ * v2 헤더 시각("07.01 19:26")은 년도가 없다. 현재 년도로 조합하되,
+ * 결과가 미래(지금 + 1일 초과)면 작년 글로 보고 년도를 내린다.
+ * 핫딜 게시판 특성상 등록일은 항상 최근 과거라는 전제가 안전하다.
+ */
+function parseV2HeadTime(text: string): string | null {
+  const match = text.match(
+    /^(\d{1,2})\.(\d{1,2})\.?\s+(?:(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+
   if (!match) {
     return null;
   }
 
-  const [, year, month, day, hour, minute, second] = match;
-
+  const [, mm, dd, hour, minute, second] = match;
+  const month = mm.padStart(2, "0");
+  const day = dd.padStart(2, "0");
   const time = [
     (hour ?? "00").padStart(2, "0"),
     minute ?? "00",
     second ?? "00",
   ].join(":");
+
+  const now = new Date();
+  let year = now.getFullYear();
+
+  const candidate = new Date(`${year}-${month}-${day}T${time}+09:00`);
+  const limit = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  if (!Number.isNaN(candidate.getTime()) && candidate > limit) {
+    year -= 1;
+  }
 
   return `${year}-${month}-${day}T${time}+09:00`;
 }
@@ -829,20 +937,57 @@ function extractBoardId(sourceUrl: string): string | null {
 
 function extractStats($: cheerio.CheerioAPI): QuasarzoneDeal["stats"] {
   /*
-   * 조회/댓글 카운터는 헤더 .util-area span.count 안에 있다.
-   * 본문 아래 작성자 목록 등에도 date/숫자가 많아 범위를 좁힌다.
+   * 추천수는 span#boardGoodCount가 두 템플릿 공통이라 그대로 쓴다.
+   * 조회/댓글은 옛 템플릿(.util-area span.count em.view/em.reply)에
+   * 없으면 v2 헤더(.v2-view-head__meta의 "조회 9,324"/"댓글 12"
+   * 텍스트)에서 폴백으로 뽑는다.
    */
   return {
-    views: extractStat(
-      $(".util-area span.count em.view").first().text(),
-    ),
+    views:
+      extractStat($(".util-area span.count em.view").first().text()) ??
+      extractV2Stat($, "조회"),
     recommendations: extractStat(
       $("span#boardGoodCount").first().text(),
     ),
-    comments: extractStat(
-      $(".util-area span.count em.reply").first().text(),
-    ),
+    comments:
+      extractStat($(".util-area span.count em.reply").first().text()) ??
+      extractV2Stat($, "댓글"),
   };
+}
+
+/**
+ * v2 헤더 메타(.v2-view-head__meta의 span.v2-meta)에서 라벨
+ * ("조회"/"댓글")로 항목을 찾아 숫자를 파싱한다. 콤마는 제거한다.
+ */
+function extractV2Stat(
+  $: cheerio.CheerioAPI,
+  label: string,
+): number | null {
+  let result: number | null = null;
+
+  $(".v2-view-head__meta span.v2-meta").each((_, el) => {
+    if (result !== null) {
+      return;
+    }
+
+    const text = cleanText($(el).text());
+
+    if (!text.includes(label)) {
+      return;
+    }
+
+    const match = text.match(/([\d,]+)/);
+
+    if (match?.[1]) {
+      const value = Number(match[1].replace(/,/g, ""));
+
+      if (!Number.isNaN(value)) {
+        result = value;
+      }
+    }
+  });
+
+  return result;
 }
 
 function extractStat(text: string): number | null {
