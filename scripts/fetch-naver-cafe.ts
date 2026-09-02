@@ -76,6 +76,31 @@ const SEARCH_KEYWORDS = [
   "GPU 특가",
 ];
 
+/**
+ * 수집 대상 카페 목록 (2026-09-02 사용자 지정).
+ *
+ * 핫딜이 꾸준히 올라오는 검증된 카페만 허용. API 응답의
+ * cafeurl 또는 link의 clubId를 기준으로 필터링한다.
+ * 다른 카페의 글은 수집하지 않는다.
+ */
+const ALLOWED_CAFES = new Set([
+  "https://cafe.naver.com/imsanbu",
+  "https://cafe.naver.com/fujipeople",
+  "https://cafe.naver.com/audiodudu",
+  "https://cafe.naver.com/skybluezw4rh",
+  "https://cafe.naver.com/noljatravel",
+  "https://cafe.naver.com/remonterrace",
+  "https://cafe.naver.com/drhp",
+  "https://cafe.naver.com/dronplay",
+  "https://cafe.naver.com/gpsf",
+  "https://cafe.naver.com/dogpalza",
+  "https://cafe.naver.com/allfm01",
+  "https://cafe.naver.com/shopjirmsin",
+  "https://cafe.naver.com/cosmania",
+  "https://cafe.naver.com/winerack24",
+  "https://cafe.naver.com/directwedding",
+]);
+
 /* ── CLI 인자 ─────────────────────────────────── */
 
 const args = process.argv.slice(2);
@@ -281,7 +306,7 @@ async function main() {
   const seenPostIds = new Set<string>();
 
   console.log(
-    `[네이버 카페] 검색 시작 — ${SEARCH_KEYWORDS.length}개 키워드, display=${LIMIT}${DRY_RUN ? " (dry-run)" : ""}`,
+    `[네이버 카페] 검색 시작 — ${SEARCH_KEYWORDS.length}개 키워드, ${ALLOWED_CAFES.size}개 대상 카페, display=${LIMIT}${DRY_RUN ? " (dry-run)" : ""}`,
   );
 
   for (let i = 0; i < SEARCH_KEYWORDS.length; i++) {
@@ -294,6 +319,9 @@ async function main() {
 
       for (const item of items) {
         if (!item.link) continue;
+
+        // 대상 카페 필터 — 허용 목록에 없는 카페는 수집하지 않음
+        if (item.cafeurl && !ALLOWED_CAFES.has(item.cafeurl)) continue;
 
         // post ID 추출로 중복 체크
         let postId: string;
