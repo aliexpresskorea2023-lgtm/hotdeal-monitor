@@ -128,6 +128,7 @@ function extractItemId(
     return null;
   }
 
+  // AliExpress: /item/{digits}.html
   const aliexpress = url.match(
     /\/item\/(\d+)\.html/,
   );
@@ -136,12 +137,70 @@ function extractItemId(
     return aliexpress[1];
   }
 
+  // Coupang: /vp/products/{digits}
   const coupang = url.match(
     /\/vp\/products\/(\d+)/,
   );
 
   if (coupang?.[1]) {
     return coupang[1];
+  }
+
+  // Gmarket: ?goodscode={digits} (item.gmarket.co.kr, m.gmarket.co.kr)
+  if (/gmarket\.co\.kr/i.test(url)) {
+    const gm = url.match(/[?&]goodscode=(\d+)/);
+    if (gm?.[1]) return gm[1];
+  }
+
+  // 11번가: /products/{digits} 또는 /products/pa/{digits}
+  if (/11st\.co\.kr/i.test(url)) {
+    const st = url.match(/\/products\/(?:pa\/)?(\d+)/);
+    if (st?.[1]) return st[1];
+  }
+
+  // 롯데온: /[mp]/product/LO{digits}
+  if (/lotteon\.com/i.test(url)) {
+    const lt = url.match(/\/product\/(LO\d+)/);
+    if (lt?.[1]) return lt[1];
+  }
+
+  // 오늘의집: store.ohou.se/goods/{digits} 또는 ohou.se/productions/{digits}
+  if (/ohou\.se/i.test(url)) {
+    const oh = url.match(/\/(?:goods|productions)\/(\d+)/);
+    if (oh?.[1]) return oh[1];
+  }
+
+  // 카카오스토어: store.kakao.com/{shop}/products/{digits}
+  if (/store\.kakao\.com/i.test(url)) {
+    const kk = url.match(/\/products\/(\d+)/);
+    if (kk?.[1]) return kk[1];
+  }
+
+  // SSG: ?itemId={digits}
+  if (/\.ssg\.com/i.test(url)) {
+    const ssg = url.match(/[?&]itemId=(\d+)/);
+    if (ssg?.[1]) return ssg[1];
+  }
+
+  // 옥션: ?itemno={alphanum}
+  if (/auction\.co\.kr/i.test(url)) {
+    const au = url.match(/[?&]itemno=([A-Za-z0-9]+)/);
+    if (au?.[1]) return au[1];
+  }
+
+  // 29cm: /products/{digits}
+  if (/29cm\.co\.kr/i.test(url)) {
+    const cm = url.match(/\/products\/(\d+)/);
+    if (cm?.[1]) return cm[1];
+  }
+
+  // 네이버 스마트스토어/브랜드스토어: /products/{digits}
+  if (
+    /smartstore\.naver\.com/i.test(url) ||
+    /brand\.naver\.com/i.test(url)
+  ) {
+    const nv = url.match(/\/products\/(\d+)/);
+    if (nv?.[1]) return nv[1];
   }
 
   return null;

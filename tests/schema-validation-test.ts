@@ -795,9 +795,9 @@ const arcaAssertions: Array<[string, boolean]> = [
       "2026-08-26T07:11:18+09:00",
   ],
   [
-    "arca 181046107: 비 ali/coupang URL → itemId null (추측 금지)",
+    "arca 181046107: SSG URL → itemId 추출 (m.ssg.com?itemId=)",
     normalizeArcaDeal(arcaResults["181046107"])[0]?.purchase
-      .itemId === null,
+      .itemId === "1000859345075",
   ],
 
   // 181084175 (크롤러 수신): 한국어 stats 라벨 + 제목 괄호 폴백

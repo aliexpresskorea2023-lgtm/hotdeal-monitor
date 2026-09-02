@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.beomjun.hotdeal-monitor.backfill</string>
+
+	<!-- 야간 백필: 22시 정기 파이프라인 종료 후 과거 데이터 딥 크롤.
+	     backfill-nightly.sh가 정기 파이프라인 잠금 해제를 대기한 뒤
+	     사이트별 깊은 페이지 수집 → 인제스트를 수행한다.
+	     caffeinate -i로 시스템 슬립 방지 (최대 ~7.5시간).
+	     목표: 2027-08 말까지 1년치 데이터 도달. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/caffeinate</string>
+		<string>-i</string>
+		<string>/bin/bash</string>
+		<string>/Users/beomjun/dev/hotdeal-monitor/collector/backfill-nightly.sh</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor</string>
+
+	<!-- 매일 23:00 실행 (정기 파이프라인 마지막 회차 22:00 종료 후).
+	     수면 중 스케줄 시각이 지나면 깨어났을 때 밀린 1회만 실행. -->
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>23</integer>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+
+	<key>RunAtLoad</key>
+	<false/>
+
+	<!-- launchd 기본 PATH에는 nvm node가 없음.
+	     node 버전을 바꾸면 이 경로도 함께 수정해야 한다. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/Users/beomjun/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>HOME</key>
+		<string>/Users/beomjun</string>
+	</dict>
+
+	<key>StandardOutPath</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/backfill-launchd-stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/backfill-launchd-stderr.log</string>
+
+	<!-- 백그라운드 저우선 순위 -->
+	<key>Nice</key>
+	<integer>10</integer>
+
+	<!-- 장시간 실행: 최대 10시간 (36000초) 허용.
+	     launchd 기본 TimeOut은 없음(무제한)이지만 안전장치. -->
+	<key>TimeOut</key>
+	<integer>36000</integer>
+</dict>
+</plist>

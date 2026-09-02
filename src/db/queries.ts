@@ -241,6 +241,10 @@ const IDENTITY_PARAMS: Record<string, string[]> = {
   "m.coupang.com": ["itemId"],
   "item.gmarket.co.kr": ["goodscode"],
   "m.gmarket.co.kr": ["goodscode"],
+  "www.ssg.com": ["itemId"],
+  "m.ssg.com": ["itemId"],
+  "itempage3.auction.co.kr": ["itemno"],
+  "mobile.auction.co.kr": ["p"],
 };
 
 function canonicalForHost(parsed: URL): void {
