@@ -64,7 +64,7 @@ quasarzone/arca는 브라우저 캡처 fixture 수급 또는 브라우저 레벨
 
 SQLite(내장 `node:sqlite`, 드라이버 무설치) 스키마는 `src/db/schema.sql`:
 - `posts` — (community, post_id) 유일. 주기 수집에서 같은 글은 재삽입 없이 상태/stats 갱신. `products_count=0`이면 폼 미입력/자유형 글이라는 표시(워커가 ended와 함께 동결 처리).
-- `deals` — (post_rowid, seq) 유일로 제자리 upsert. 1게시글 N상품. `item_id`(ali/coupang 등)는 상품 단위 묶음의 1차 후보 신호로 보존 — productKey 해결은 다음 단계(이 섹션 아래 보류 결정과 동일).
+- `deals` — (post_rowid, seq) 유일로 제자리 upsert. 1게시글 N상품. `item_id`(11개 플랫폼: Coupang/AliExpress/G마켓/11번가/롯데온/오늘의집/카카오/SSG/옥션/29cm/네이버 스마트·브랜드스토어)는 상품 단위 묶음의 1차 후보 신호로 보존 — productKey 해결은 다음 단계(이 섹션 아래 보류 결정과 동일).
 - `price_observations` — append-only 시계열. 가격/배송비/추정원화/게시글 상태가 직전 관측과 다를 때만 행 추가(조회수 같은 연속 변동은 관측을 만들지 않음). ended 전환 시점도 여기 기록된다.
 - `ingest_runs` — run 중복 적재 방지 원장.
 
@@ -315,7 +315,7 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 
 ### 과거 핫딜 백필 — 야간 딥 크롤 (2026-08-28)
 
-**배경**: 과거 기록 노출 수요. 1년치는 실측 ~560건/일 × 365 ≈ 20만 건이라 안전 스로틀(2.5~3초)로 하룻밤(약 9시간 창구)에 불가 → **매일 밤 조금씩 과거로 파고드는 증분 백필**로 전환. `collector/backfill-nightly.sh`(QoderWork 예약 작업이 22:35에 nohup+caffeinate로 띄움, 로그 `data/logs/backfill.log`).
+**배경**: 과거 기록 노출 수요. 1년치는 실측 ~560건/일 × 365 ≈ 20만 건이라 안전 스로틀(2.5~3초)로 하룻밤(약 9시간 창구)에 불가 → **매일 밤 조금씩 과거로 파고드는 증분 백필**로 전환. `collector/backfill-nightly.sh`(launchd `com.beomjun.hotdeal-monitor.backfill` 매일 23:00 실행, caffeinate -i로 슬립 방지, 로그 `data/logs/backfill.log`).
 
 **핵심 구조**: 목록 탐색 깊이는 상태 파일 없이 **날짜 기반 증가** — `페이지 = base + 경과일 × 증가율`(시작 2026-08-28, 370일 상한). 증가율 ≈ 실측 일게시량÷페이지당 게시수 + 여유로, 하루 ~1일치씩 깊어진다. 상세는 `--max-details` 고정 예산인데 기수집 글은 DB 판정(동결)으로 0요청 스킵이라 예산이 그대로 더 오래된 미수집 글로 흐른다. 중간에 며칠 빠져도 깊이는 자동으로 따라잡힘. 인제스트는 스크립트 내장, 배포는 익일 08시 정기 파이프라인이 수행(정기 잠금 대기 90분 상한).
 
