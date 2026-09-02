@@ -657,6 +657,7 @@ export function getDealFeed(
                 status_override, hidden
          FROM posts
          WHERE hidden = 0
+           AND products_count > 0
            AND EXISTS (SELECT 1 FROM deals d WHERE d.post_rowid = posts.id)
          ORDER BY CASE status WHEN 'ended' THEN 1 ELSE 0 END,
                   COALESCE(posted_at, first_seen_at) DESC, id DESC

@@ -164,7 +164,7 @@ export function parsePpomppuHtml(
     ...bodyLinks,
   ]);
 
-  const groups = groupProductSections(blockLines);
+  const { groups, structuralCount } = groupProductSections(blockLines);
 
   let products: PpomppuProduct[];
   let rawPrice: string | null = null;
@@ -181,7 +181,8 @@ export function parsePpomppuHtml(
    * products_count=0으로 워커를 동결(노출 제외).
    *
    * 감지 조건 두 가지:
-   * 1) groups.length >= 2 — 상품명/가격/링크 삼박자 반복 (토스글 등)
+   * 1) structuralCount >= 2 — 상품명/링크 구조적 그룹 수 (가격 필터 전).
+   *    가격이 1개만 있어도 구조가 2개면 멀티 상품으로 판정.
    * 2) variantLines.length >= 3 — 동일 마커(체감가/혜택가) 가격 나열
    *    (라이브 커머스 옵션 나열 등, url은 null이지만 여러 Deal이
    *    만들어져 카드가 쪼개지는 동일한 혼선 유발)
@@ -190,7 +191,7 @@ export function parsePpomppuHtml(
    */
   const variantLinesProbe = findVariantPriceLines(blockLines);
   const isMultiProductPost =
-    groups.length >= 2 || variantLinesProbe.length >= 3;
+    structuralCount >= 2 || variantLinesProbe.length >= 3;
 
   if (isMultiProductPost) {
     products = [];
@@ -670,7 +671,7 @@ function isBracketLabel(text: string): boolean {
 
 function groupProductSections(
   lines: BlockLine[],
-): ProductGroup[] {
+): { groups: ProductGroup[]; structuralCount: number } {
   const groups: ProductGroup[] = [];
 
   let pendingName: string | null = null;
@@ -809,13 +810,20 @@ function groupProductSections(
   /*
    * 가격(0 초과)이 확인된 그룹만 상품으로 센다.
    * 가격이 없는 그룹은 링크 모음일 가능성이 크다.
+   *
+   * structuralCount는 가격 필터 전 구조적 그룹 수 —
+   * 멀티 상품 감지에 사용한다 (price > 0 필터 없이).
    */
-  return groups.filter(
-    (group) =>
-      group.price?.price !== null &&
-      group.price?.price !== undefined &&
-      group.price.price > 0,
-  );
+  const structuralCount = groups.length;
+  return {
+    groups: groups.filter(
+      (group) =>
+        group.price?.price !== null &&
+        group.price?.price !== undefined &&
+        group.price.price > 0,
+    ),
+    structuralCount,
+  };
 }
 
 function isPriceOnlyLine(text: string): boolean {

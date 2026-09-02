@@ -222,17 +222,11 @@ const ppomppuAssertions: Array<[string, boolean]> = [
       normalizePpomppuDeal(tossBundle).length === 0,
   ],
 
-  // 303693: 제목 폴백 + (103만) 제거 + 쿠팡 itemId
+  // 303693: 복수 구매 링크 (쿠팡+G마켓) → 스킵 (2026-09-02 구조적 감지)
   [
-    "ppomppu 303693: 제목 폴백 상품명 (꼬리 '(103만)' 제거)",
-    acerLaptop.products[0]?.name ===
-      "팬서레이크 노트북! 에이서 아스파이어 16인치 노트북 코어 울트라5" &&
-      acerLaptop.products[0]?.price === 1039000,
-  ],
-  [
-    "ppomppu 303693: normalize → 쿠팡 itemId 추출",
-    normalizePpomppuDeal(acerLaptop)[0]?.purchase.itemId ===
-      "9618022247",
+    "ppomppu 303693: 복수 링크 감지 → products=[] (스킵 정책)",
+    acerLaptop.products.length === 0 &&
+      normalizePpomppuDeal(acerLaptop).length === 0,
   ],
 
   // 303711: 옵션/체감가 나열도 복수 상품으로 간주 → 스킵 (2026-09-02)
