@@ -456,6 +456,7 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 - **NCP API HUB**: 네이버 검색 API가 2025-06-25 NCP API HUB로 이전. 엔드포인트 = `naverapihub.apigw.ntruss.com/search/v1/cafearticle`. 인증 헤더 = `X-NCP-APIGW-API-KEY-ID` / `X-NCP-APIGW-API-KEY`. 구 `openapi.naver.com`은 2027-06-30 완전 종료. 키는 NCP 콘솔(Application Services > NAVER API HUB)에서 발급.
 - **데이터 한계**: 스니펫 기반이라 (1) 구매 URL 없음(카페 글 링크만), (2) 상품명은 추출 불신 → null, (3) 상태 판정 불가 → "unknown" 고정, (4) stats(조회/추천) 없음. 사용자는 카드의 "원문 보기"로 카페 글에 진입해 전체 정보 확인.
 - **키워드(실측 정제)**: 핫딜/알리 핫딜/쿠팡 특가/타임딜/해외직구 핫딜/노트북 특가/아이패드 특가/모니터 특가/SSD 특가/GPU 특가. "특가"/"할인"/"가격오류"/"독점가격"은 중고나라·부동산 등 오탐 과다로 제거.
+- **대상 카페 화이트리스트**: `ALLOWED_CAFES` (15개 카페). 핫딜이 꾸준히 올라오는 검증된 카페만 수집. API 응답의 `cafeurl` 기준 필터링. 목록: imsanbu/fujipeople/audiodudu/skybluezw4rh/noljatravel/remonterrace/drhp/dronplay/gpsf/dogpalza/allfm01/shopjirmsin/cosmania/winerack24/directwedding.
 - **파이프라인**: `run-pipeline.sh` 3단계에 `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 환경변수 존재 시 자동 실행. .env.local에서 키를 읽어 export. 실패해도 파이프라인 계속(베스트 에포트).
 - **UI**: 커뮤니티 필터 칩에 네이버 카페 로고 추가(`public/community-logos/naver-cafe.webp`). `sourceLabel("naver_cafe")` = "네이버카페".
 - **DB**: community + excluded_reason CHECK 제약조건 업데이트. posts 5,923행 + deals 4,523행 무손실 마이그레이션(`scripts/migrate-naver-cafe.ts --write`).
