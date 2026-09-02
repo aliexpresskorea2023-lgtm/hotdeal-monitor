@@ -45,6 +45,21 @@ LOCK_DIR="$ROOT/data/.pipeline.lock"
 # 수동 수집은 이 값과 무관하게 trends.py 직접 실행으로 언제든 가능.
 TRENDS_WEEKDAY=3
 
+# .env.local에서 네이버 API 키 읽기 (파이프라인 조건부 실행용).
+# 전체 source는 위험(다른 변수 오염)이라 필요한 키만 추출.
+_env_val() {
+  local key="$1"
+  local val
+  val="$(grep "^${key}=" "$ROOT/.env.local" 2>/dev/null | head -1 | cut -d= -f2-)"
+  # 따옴표 제거
+  val="${val#\"}" ; val="${val%\"}"
+  val="${val#\'}" ; val="${val%\'}"
+  echo "$val"
+}
+NAVER_CLIENT_ID="$(_env_val NAVER_CLIENT_ID)"
+NAVER_CLIENT_SECRET="$(_env_val NAVER_CLIENT_SECRET)"
+export NAVER_CLIENT_ID NAVER_CLIENT_SECRET
+
 mkdir -p "$LOG_DIR"
 
 # ---- 잠금 -----------------------------------------------
@@ -121,6 +136,20 @@ if [[ "$ingest_rc" -eq 0 ]]; then
   log "[3/5] ingest 정상 종료"
 else
   log "[3/5] ingest 실패 (exit $ingest_rc)"
+fi
+
+# 네이버 카페 검색 API 수집 — 키가 있을 때만 실행 (2026-09-02).
+# HTML 스냅샷 없이 JSON API 응답을 직접 DB에 적재하므로
+# collect.py/ingest-crawls.ts와 독립적이다. 실패해도 파이프라인 게이트 무관.
+if [[ -n "${NAVER_CLIENT_ID:-}" && -n "${NAVER_CLIENT_SECRET:-}" ]]; then
+  log "[3/5] fetch-naver-cafe.ts 실행 (네이버 카페 검색)"
+  if npx tsx scripts/fetch-naver-cafe.ts >>"$LOG_FILE" 2>&1; then
+    log "[3/5] 네이버 카페 수집 완료"
+  else
+    log "[3/5] 네이버 카페 수집 실패 — 계속 진행 (베스트 에포트)"
+  fi
+else
+  log "[3/5] 네이버 카페 수집 생략 (API 키 미설정)"
 fi
 
 # 트렌드 매니퍼스트 적재 — 핫딜 적재와 독립적이라 실패해도

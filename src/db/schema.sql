@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS posts (
   community TEXT NOT NULL
     CHECK(community IN (
       'fmkorea', 'ppomppu', 'ruliweb', 'quasarzone', 'arca',
-      'mlbpark', 'theqoo', 'slrclub'   -- 하위 호환 유니온 (수집 대상 아님)
+      'mlbpark', 'theqoo', 'slrclub',   -- 하위 호환 유니온 (수집 대상 아님)
+      'naver_cafe'                       -- 네이버 카페 검색 API (2026-09-02)
     )),
   post_id TEXT NOT NULL,
   url TEXT NOT NULL,
@@ -125,7 +126,9 @@ CREATE TABLE IF NOT EXISTS deals (
   excluded_reason TEXT
     CHECK(excluded_reason IN (
       'category', 'zero-price', 'promo-title', 'software-title',
-      'rental-title', 'travel-title'
+      'rental-title', 'travel-title',
+      'mart-flyer-title', 'telecom-title', 'live-benefit-title',
+      'point-reward-title'
     ) OR excluded_reason IS NULL),
   exclusion_restored INTEGER NOT NULL DEFAULT 0,
 

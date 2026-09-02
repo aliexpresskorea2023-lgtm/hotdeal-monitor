@@ -49,6 +49,7 @@ const COMMUNITY_LABELS: Record<string, string> = {
   theqoo: "더쿠",
   slrclub: "SLR클럽",
   ruliweb: "루리웹",
+  naver_cafe: "네이버카페",
 };
 
 export function sourceLabel(source: string): string {

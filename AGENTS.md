@@ -448,4 +448,27 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 - **직접 크롤링 실측**: `cafe.naver.com` 홈 = 934바이트 SPA 셸(`section.cafe.naver.com/ca-fe/`로 리다이렉트), 게시글 목록 = 4,426바이트(내용 없음), `search.naver.com?where=cafe` = 1MB HTML(스크래핑 가능하나 로그인 마커·방어 리스크). **불가** 판정 — 카페 본문은 로그인 세션 + JS 렌더 필요, 방어 강도 높음.
 - **권장 접근**: 보류. 지금 파이프라인(커뮤니티 5곳 + LLM 추출 로드맵) 안정화가 우선. 네이버 카페는 (a) 키워드 세트가 확정되고 (b) 검색 지연을 허용하는 백필 용도가 생길 때 공식 API로 파일럿. 직접 크롤링은 방어 리스크 대비 편익이 낮아 비권장.
 
-**검증 게이트 통과**: `npx tsx tests/schema-validation-test.ts`(111 PASS) + `npx tsx tests/price-marker-regression-test.ts`(4 PASS) + `pnpm build`(clean, 18 routes). Playwright 옵셔널 의존성 처리로 빌드 무중단.
+### 네이버 카페 검색 API 수집 구현 (2026-09-02) — 파일럿
+
+위의 "부분 가능" 판단을 바탕으로 공식 검색 API(`cafearticle.json`) 기반 수집기를 구현. HTML 스냅샷 없이 JSON 응답을 즉시 DB에 적재하므로 기존 collect.py → ingest-crawls.ts 파이프라인과 독립적.
+
+- **구조**: `src/parsers/naver-cafe.ts`(파서) + `scripts/fetch-naver-cafe.ts`(수집·적재 스크립트). 파서는 API 응답 항목(title/description/link/cafename)을 받아 제목+스니펫에서 가격·통화를 추출하고 `NaverCafeDeal`을 생성. 수집 스크립트는 10개 키워드를 순회하며 API 호출 → 파싱 → 제외 규칙 검사 → posts/deals/price_observations upsert.
+- **NCP API HUB**: 네이버 검색 API가 2025-06-25 NCP API HUB로 이전. 엔드포인트 = `naverapihub.apigw.ntruss.com/search/v1/cafearticle`. 인증 헤더 = `X-NCP-APIGW-API-KEY-ID` / `X-NCP-APIGW-API-KEY`. 구 `openapi.naver.com`은 2027-06-30 완전 종료. 키는 NCP 콘솔(Application Services > NAVER API HUB)에서 발급.
+- **데이터 한계**: 스니펫 기반이라 (1) 구매 URL 없음(카페 글 링크만), (2) 상품명은 추출 불신 → null, (3) 상태 판정 불가 → "unknown" 고정, (4) stats(조회/추천) 없음. 사용자는 카드의 "원문 보기"로 카페 글에 진입해 전체 정보 확인.
+- **키워드(실측 정제)**: 핫딜/알리 핫딜/쿠팡 특가/타임딜/해외직구 핫딜/노트북 특가/아이패드 특가/모니터 특가/SSD 특가/GPU 특가. "특가"/"할인"/"가격오류"/"독점가격"은 중고나라·부동산 등 오탐 과다로 제거.
+- **파이프라인**: `run-pipeline.sh` 3단계에 `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 환경변수 존재 시 자동 실행. .env.local에서 키를 읽어 export. 실패해도 파이프라인 계속(베스트 에포트).
+- **UI**: 커뮤니티 필터 칩에 네이버 카페 로고 추가(`public/community-logos/naver-cafe.webp`). `sourceLabel("naver_cafe")` = "네이버카페".
+- **DB**: community + excluded_reason CHECK 제약조건 업데이트. posts 5,923행 + deals 4,523행 무손실 마이그레이션(`scripts/migrate-naver-cafe.ts --write`).
+
+**네이버페이 적립 홍보글 제외 규칙 추가 (2026-09-02)**:
+
+- `POINT_REWARD_TITLE` — "네이버페이 적립 N원" 형태 제목 매칭. `excluded_reason = 'point-reward-title'`.
+- DB deals 테이블 excluded_reason CHECK에도 `'point-reward-title'` 추가(마이그레이션 완료).
+
+**썸네일 #5 네이버 쇼핑검색 비활성화 (2026-09-02)**:
+
+- `/v1/search/shop.json` API가 2026-07-31 영구 종료. NCP API HUB로도 이전되지 않음.
+- `searchNaverShop()` 함수는 `@deprecated` 처리, 항상 `"no-cred"` 반환(파이프라인 호환 유지).
+- 대안: 다나와 썸네일(2단계) + og:image 직접 수집(1단계)에 의존.
+
+**검증 게이트 통과**: `pnpm build`(clean, 18 routes).

@@ -46,6 +46,41 @@ import {
   type CffiRequest,
   type CffiResult,
 } from "./lib/cffi-fetch";
+import fs from "node:fs";
+import path from "node:path";
+
+/**
+ * 루트 .env.local을 읽어 process.env에 채운다 (이미 설정된 값은 보존).
+ *
+ * 이 스크립트는 run-pipeline.sh가 `npx tsx`로 독립 실행하므로 Next.js의
+ * 자동 .env.local 로딩 혜택을 못 받는다. 네이버 쇼핑 검색 폴백(#5)의
+ * NAVER_CLIENT_ID/SECRET를 여기서 주입한다. (collector/trends.py의
+ * load_env_local()과 동일 규약.)
+ */
+function loadEnvLocal(): void {
+  const envPath = path.resolve(__dirname, "..", ".env.local");
+  if (!fs.existsSync(envPath)) return;
+
+  for (const rawLine of fs.readFileSync(envPath, "utf-8").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    /* 감싼 따옴표 제거. */
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+loadEnvLocal();
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -404,58 +439,20 @@ async function searchDanawa(
   }
 }
 
-/* ---------------- 네이버 쇼핑검색 폴백 (2b단계, #5) ---------------- */
+/* ---------------- 네이버 쇼핑검색 폴백 (2b단계, #5) — 비활성화 -------- */
 
 /**
- * 네이버 쇼핑검색 Open API — /v1/search/shop.json.
- * NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수 필요
- * (developers.naver.com 무료 앱 등록, shop 일 25k 쿼터).
+ * @deprecated 네이버 쇼핑검색 Open API (/v1/search/shop.json)는
+ * 2026-07-31 영구 종료. NCP API HUB로도 이전되지 않음.
+ * 함수는 파이프라인 호환성을 위해 유지하되 항상 "no-cred"를 반환해
+ * 전 단계에서 스킵되도록 한다.
  *
- * 검색 페이지(search.shopping.naver.com)는 SPA + 429 rate-limit이라
- * 스크래핑하지 않는다 — 공식 API만 쓴다(사용자 인프라 원칙: 무료/공개 API).
- *
- * 반환:
- * - {title, image}: 매칭 1위
- * - null: 결과 없음
- * - "error": 네트워크/인증 오류
- * - "no-cred": 자격증명 없음 (전 단계 스킵)
+ * 대안: 다나와 썸네일(2단계) + og:image 직접 수집(1단계)에 의존.
  */
 async function searchNaverShop(
-  query: string,
+  _query: string,
 ): Promise<{ title: string; image: string } | null | "error" | "no-cred"> {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return "no-cred";
-
-  try {
-    const url =
-      `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}` +
-      `&display=5&sort=sim`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        "X-Naver-Client-Id": clientId,
-        "X-Naver-Client-Secret": clientSecret,
-      },
-    });
-
-    if (!res.ok) return "error";
-
-    const data = (await res.json()) as {
-      items?: Array<{ title: string; image: string }>;
-    };
-    const items = data.items ?? [];
-    if (items.length === 0) return null;
-
-    /* title에 네이버가 심는 강조 태그(<b>) 제거. */
-    const first = items[0];
-    const title = decodeEntities((first.title ?? "").replace(/<\/?b>/g, ""));
-    const image = first.image ?? "";
-    if (!title || !image) return null;
-    return { title, image };
-  } catch {
-    return "error";
-  }
+  return "no-cred";
 }
 
 /* ---------------- Playwright 폴백 (3단계, #6) ---------------- */

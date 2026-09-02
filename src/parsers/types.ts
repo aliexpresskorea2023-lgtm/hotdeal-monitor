@@ -6,7 +6,8 @@ export type Community =
   | "quasarzone"
   | "theqoo"
   | "slrclub"
-  | "ruliweb";
+  | "ruliweb"
+  | "naver_cafe";
 
 export type DealStatus =
   | "active"

@@ -197,7 +197,7 @@ export const STORE_FILTER_LOGOS: Record<string, string> = {
 const STORE_FILTER_SET: ReadonlySet<string> = new Set(STORE_FILTERS);
 
 /**
- * 커뮤니티(출처 게시판) 필터 고정 순서 — 수집 대상 5곳.
+ * 커뮤니티(출처 게시판) 필터 고정 순서 — 수집 대상 5곳 + 네이버 카페 API.
  * 표시 라벨은 src/lib/format.ts의 sourceLabel() 사용.
  */
 export const COMMUNITIES = [
@@ -206,6 +206,7 @@ export const COMMUNITIES = [
   "ruliweb",
   "quasarzone",
   "arca",
+  "naver_cafe",
 ] as const;
 
 export type Community = (typeof COMMUNITIES)[number];
@@ -217,6 +218,7 @@ export const COMMUNITY_LOGOS: Record<Community, string> = {
   ruliweb: "/community-logos/ruliweb.png",
   quasarzone: "/community-logos/quasarzone.png",
   arca: "/community-logos/arca.png",
+  naver_cafe: "/community-logos/naver-cafe.webp",
 };
 
 

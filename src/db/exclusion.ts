@@ -108,6 +108,17 @@ const TELECOM_TITLE =
 const LIVE_BENEFIT_TITLE =
   /(라방|라이브 ?방송|쇼핑 ?라이브|라이브).{0,15}(총정리|정리|모음|예고)|라방\s*\d+\s*원/;
 
+/**
+ * 네이버페이 등 포인트 적립 홍보글 판정 — 2026-09-02 추가.
+ * "네이버페이 적립 N원" 형태가 핵심: 단일 상품 딜이 아니라
+ * 포인트 적립 이벤트 홍보라서 여기저기 튀어나와 자리를 차지한다.
+ * 오탐 방지: 일반 딜의 부가 조건("구매 시 네이버페이 2% 적립")은
+ * 제목에 잘 등장하지 않으므로, "적립"/"포인트"/"캐시백"이 제목에
+ * 있으면 대부분 포인트 홍보글이다.
+ */
+const POINT_REWARD_TITLE =
+  /(네이버 ?페이|네이버pay).{0,15}(적립|포인트|캐시백|환급)|(적립|포인트).{0,6}\d+\s*원.{0,6}(네이버 ?페이|네이버pay)/;
+
 export interface ExclusionInput {
   /** 게시글 소속 커뮤니티 (네이티브 카테고리 매핑용) */
   community: string;
@@ -132,6 +143,7 @@ export interface ExclusionResult {
     | "mart-flyer-title"
     | "telecom-title"
     | "live-benefit-title"
+    | "point-reward-title"
     | null;
   categoryNorm: NormCategory;
 }
@@ -178,6 +190,10 @@ export function checkExclusion(input: ExclusionInput): ExclusionResult {
 
   if (LIVE_BENEFIT_TITLE.test(input.title)) {
     return { excluded: true, reason: "live-benefit-title", categoryNorm };
+  }
+
+  if (POINT_REWARD_TITLE.test(input.title)) {
+    return { excluded: true, reason: "point-reward-title", categoryNorm };
   }
 
   return { excluded: false, reason: null, categoryNorm };
