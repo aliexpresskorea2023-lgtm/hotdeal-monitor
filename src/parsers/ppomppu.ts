@@ -170,92 +170,71 @@ export function parsePpomppuHtml(
   let rawPrice: string | null = null;
   let rawShipping: string | null = null;
 
-  if (groups.length >= 2) {
-    /*
-     * 다중 상품 모드.
-     * 각 그룹은 본문에서 상품명/가격/링크가 실제로 함께
-     * 확인된 경우에만 만들어진다. (원칙 5)
-     */
-    products = groups.map((group) => ({
-      name: group.name,
-      price: group.price?.price ?? null,
-      currency: group.price?.currency ?? null,
-      priceText: group.price?.priceText ?? null,
-      priceRange: group.price?.range ?? null,
-      shipping: null,
-      shippingText: null,
-      store: storeTag,
-      url: group.link?.resolved ?? null,
-      urlType: detectUrlType(
-        group.link?.resolved ?? null,
-        group.link?.raw ?? null,
-      ),
-      rawUrl: group.link?.raw ?? null,
-    }));
+  /*
+   * 복수 상품/옵션 나열 스킵 (2026-09-02 정책, 사용자 확정).
+   *
+   * 뽐뿌는 정형화된 서식이 없어 복수 상품 구조를 파서 규칙으로
+   * 유지보수할수록 복잡도가 쌓이고, 그룹핑이 어긋날 때 DB 필드값
+   * (상품명·가격·URL)이 뒤섞이는 사고가 발생한다. 그래서 본문에서
+   * 복수 상품 구조가 감지되면 상품을 아예 적재하지 않는다 —
+   * products=[] → normalizePpomppuDeal은 Deal[]을 비우고 → ingest는
+   * products_count=0으로 워커를 동결(노출 제외).
+   *
+   * 감지 조건 두 가지:
+   * 1) groups.length >= 2 — 상품명/가격/링크 삼박자 반복 (토스글 등)
+   * 2) variantLines.length >= 3 — 동일 마커(체감가/혜택가) 가격 나열
+   *    (라이브 커머스 옵션 나열 등, url은 null이지만 여러 Deal이
+   *    만들어져 카드가 쪼개지는 동일한 혼선 유발)
+   *
+   * 단일 상품 모드만 유지한다. 파서 복잡화 유인을 원천 차단.
+   */
+  const variantLinesProbe = findVariantPriceLines(blockLines);
+  const isMultiProductPost =
+    groups.length >= 2 || variantLinesProbe.length >= 3;
+
+  if (isMultiProductPost) {
+    products = [];
   } else {
-    const variantLines = findVariantPriceLines(blockLines);
+    /*
+     * 단일 상품 모드.
+     * 본문에 상품 단위 구조가 없으므로 상품명은 제목 폴백
+     * (nameFromTitle)으로 보완한다. 추출 실패 시 null.
+     */
+    const primaryLink =
+      topTitleLink ?? bodyLinks[0] ?? null;
 
-    if (variantLines.length >= 3) {
-      /*
-       * 옵션/체감가 나열 모드.
-       * 상품별 개별 링크가 없으므로 url은 null로 둔다.
-       * (게시글 대표 링크를 모든 옵션에 임의로 연결하지 않는다.)
-       */
-      products = variantLines.map((variant) => ({
-        name: variant.name,
-        price: variant.price.price,
-        currency: variant.price.currency,
-        priceText: variant.price.priceText,
-        priceRange: variant.price.range,
-        shipping: null,
-        shippingText: null,
+    const priceHit = extractSinglePrice(
+      blockLines,
+      bodyText,
+      title,
+    );
+
+    const shippingHit = extractShipping(
+      blockLines,
+      title,
+    );
+
+    rawPrice = priceHit?.priceText ?? null;
+    rawShipping = shippingHit?.shippingText ?? null;
+
+    products = [
+      {
+        name: nameFromTitle(title),
+        price: priceHit?.price ?? null,
+        currency: priceHit?.currency ?? null,
+        priceText: priceHit?.priceText ?? null,
+        priceRange: priceHit?.range ?? null,
+        shipping: shippingHit?.shipping ?? null,
+        shippingText: shippingHit?.shippingText ?? null,
         store: storeTag,
-        url: null,
-        urlType: "none",
-        rawUrl: null,
-      }));
-    } else {
-      /*
-       * 단일 상품 모드.
-       * 본문에 상품 단위 구조가 없으므로 상품명은 제목 폴백
-       * (nameFromTitle)으로 보완한다. 추출 실패 시 null.
-       */
-      const primaryLink =
-        topTitleLink ?? bodyLinks[0] ?? null;
-
-      const priceHit = extractSinglePrice(
-        blockLines,
-        bodyText,
-        title,
-      );
-
-      const shippingHit = extractShipping(
-        blockLines,
-        title,
-      );
-
-      rawPrice = priceHit?.priceText ?? null;
-      rawShipping = shippingHit?.shippingText ?? null;
-
-      products = [
-        {
-          name: nameFromTitle(title),
-          price: priceHit?.price ?? null,
-          currency: priceHit?.currency ?? null,
-          priceText: priceHit?.priceText ?? null,
-          priceRange: priceHit?.range ?? null,
-          shipping: shippingHit?.shipping ?? null,
-          shippingText: shippingHit?.shippingText ?? null,
-          store: storeTag,
-          url: primaryLink?.resolved ?? null,
-          urlType: detectUrlType(
-            primaryLink?.resolved ?? null,
-            primaryLink?.raw ?? null,
-          ),
-          rawUrl: primaryLink?.raw ?? null,
-        },
-      ];
-    }
+        url: primaryLink?.resolved ?? null,
+        urlType: detectUrlType(
+          primaryLink?.resolved ?? null,
+          primaryLink?.raw ?? null,
+        ),
+        rawUrl: primaryLink?.raw ?? null,
+      },
+    ];
   }
 
   const discount = extractDiscount(blockLines);

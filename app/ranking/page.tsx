@@ -28,6 +28,11 @@ import {
  * 것을 막는다. 기준 시각 = 가장 이른 출처 게시 시각(없으면 첫
  * 적재 시각).
  *
+ * 상태 규칙(2026-09-02): 종료(status='ended') 딜은 순위에서
+ * 완전히 제외한다. "실시간" 페이지 특성상 지금 구매 가능한 딜만
+ * 노출한다. 숨김(hidden) 딜은 getDealFeed가 deal 단위에서 이미
+ * 거른다.
+ *
  * 필터(2026-08-27 추가): 카테고리 + 쇼핑몰 칩 — 핫딜 모음과
  * 동일하게 쿼리스트링 기반 서버 렌더.
  */
@@ -97,6 +102,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
 
   const nowMs = Date.now();
   const ranked = [...items]
+    .filter((i) => i.status !== "ended")
     .filter((i) => itemAgeMs(i, nowMs) < RANK_MAX_AGE_HOURS * 3_600_000)
     .sort((a, b) => hotScore(b) - hotScore(a))
     .slice(0, TOP_N);

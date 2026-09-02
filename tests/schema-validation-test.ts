@@ -212,13 +212,14 @@ const ppomppuAssertions: Array<[string, boolean]> = [
       eggs.products[0]?.store === "네이버",
   ],
 
-  // 303709: 다중 상품(토스글) 분리
+  // 303709: 복수 상품 스킵 정책 (2026-09-02)
+  // 뽐뿌 복수 상품 게시글은 파서 복잡화·DB 필드 혼선 방지를 위해
+  // products=[]로 스킵한다. normalize → Deal[] 비어 ingest가
+  // products_count=0으로 워커 동결.
   [
-    "ppomppu 303709: 다중 상품 7개 분리 (상품명/가격/링크 동시 확인)",
-    tossBundle.products.length === 7 &&
-      tossBundle.products[0]?.name === "스파클 생수, 무라벨, 2L, 24개" &&
-      tossBundle.products[0]?.price === 8990 &&
-      tossBundle.products[6]?.price === 5700,
+    "ppomppu 303709: 복수 상품 감지 → products=[] (스킵 정책)",
+    tossBundle.products.length === 0 &&
+      normalizePpomppuDeal(tossBundle).length === 0,
   ],
 
   // 303693: 제목 폴백 + (103만) 제거 + 쿠팡 itemId
@@ -234,12 +235,11 @@ const ppomppuAssertions: Array<[string, boolean]> = [
       "9618022247",
   ],
 
-  // 303711: 옵션/체감가 나열 모드
+  // 303711: 옵션/체감가 나열도 복수 상품으로 간주 → 스킵 (2026-09-02)
   [
-    "ppomppu 303711: 옵션 나열 5개 (url 없음 — 대표 링크 임의 연결 금지)",
-    galaxyWatch.products.length === 5 &&
-      galaxyWatch.products[0]?.name === "갤럭시 워치9 40mm 블루투스" &&
-      galaxyWatch.products.every((p) => p.url === null),
+    "ppomppu 303711: 옵션 나열(체감가 3개 이상) → products=[] (스킵 정책)",
+    galaxyWatch.products.length === 0 &&
+      normalizePpomppuDeal(galaxyWatch).length === 0,
   ],
 
   // 303705: 괄호 없는 꼬리 가격 표현 제거

@@ -407,3 +407,45 @@ v0 시안 이식을 위해 shadcn 도입(radix base·nova 프리셋, `components
 - **세팅 검증(2026-08-31)**: 발급 키(신규 프로젝트) 동작 확인. 호출 시 `x-goog-api-key` 헤더 사용(`Authorization: Bearer`은 OAuth 경로라 401). 신규 프로젝트 키는 구버전 모델(2.5 계열) 접근 불가 — `*-latest` 앨리어스 사용. 네이티브 `generateContent`는 피크 시간대 503(과부하)·빈 404로 불안정했지만 **OpenAI 호환 엔드포인트(`/v1beta/openai/chat/completions`)는 즉시 통과** → 추출 계층 구현은 이 경로 기준(표준 스키마라 프로바이더 교체에도 유리). 샘플 추출 테스트 통과(제목+본문 → 상품명·스토어·가격·배송비 정확).
 
 **타이밍**: D1 이주 진행 중(커트오버 2026-09-03)이라 실행은 안정화(9/4) 이후. 속성 컬럼은 이주 중 스키마 변경에 태우는 것을 우선 검토. 이 로드맵은 호스팅·DB 형태에 무관하므로 개인 사이드 프로젝트 이관 시에도 그대로 유효하다(사용자 명시 — 인계 참고용 기록).
+
+### 랭킹·제외 규칙 확장 + 뽐뿌 복수 상품 스킵 + 썸네일 방어 우회 (2026-09-02)
+
+**랭킹 노출 규칙 추가** — `app/ranking/page.tsx`: 실시간 핫딜 순위에서 `status === "ended"` 딜 제외. 숨김(hidden)은 이미 `getDealFeed()` 단계에서 걸러지므로 랭킹 페이지 추가 방어 불필요. 24h 신선도 컷(`itemAgeMs`)은 그대로 유지.
+
+**상품 제외 유형 3종 추가** — `src/db/exclusion.ts` (`checkExclusion`이 ingest/queries/purge 전부에서 공유되므로 한 번에 반영):
+
+- `mart-flyer-title` = `/전단(?!계)/` — 홈플러스·이마트 행사 전단류. **부정 선독 `(?!계)` 필수**: "당뇨 전단계" 같은 의료 용어 오탐 방지(실측: 20→19건으로 정정).
+- `telecom-title` = 통신사 할인/혜택/이벤트/멤버십 + SKT/KT/LGU+/유플러스/T데이 계열. "티멤버십"·"KT멤버십" 같은 실제 상품명은 오탐 아님 확인.
+- `live-benefit-title` = 라방/라이브방송/쇼핑라이브 + 총정리/모음/예고, 또는 "라방 N원" 패턴. **주의**: "라이브 혜택가 93만원"처럼 실제 상품명에 '라이브'가 들어간 경우는 오탐 아님(정리/모음 어미가 없으면 미발동).
+
+판정 순서: category → zero-price → promo-title → software-title → rental-title → travel-title → **mart-flyer → telecom → live-benefit**. purge 실행 결과(2026-09-02): 1,095건 삭제 — category 933, zero-price 92, promo-title 25, travel-title 18, mart-flyer 19, live-benefit 11, software 5.
+
+**뽐뿌 복수 상품 게시글 수집 중단** — `src/parsers/ppomppu.ts` (2026-09-02 사용자 확정 정책):
+
+- 배경: 뽐뿌는 정형 서식 없음 → 파서 땜질이 구조적으로 무한 반복, DB 필드값 뒤죽박죽 리스크. 위 "상품 정체성 로드맵"의 **뽐뿌 = LLM 추출** 결정과 같은 뿌리. LLM 파일럿 전까지 임시 방어.
+- 규칙: `groupProductSections >= 2`(상품명/가격/링크 삼박자 반복) **또는** `findVariantPriceLines >= 3`(체감가/혜택가 마커 나열) → `products = []` 반환 → normalize `[]` → ingest가 `products_count = 0`으로 동결. 단일 상품 모드만 기존 경로 유지.
+- 회귀 테스트: `tests/price-marker-regression-test.ts`를 **복수 상품 스킵 정책 회귀**로 재정의 — 303707 단일(5,400원 통과) + 303702/303722/303752 복수(products=[] 확인). 전부 PASS.
+- 정리: `scripts/purge-ppomppu-multi.ts`(1회성) 실행 — 637 딜 삭제, 126 게시글 `products_count` 갱신. 전체 딜 6,220 → 4,488.
+
+**썸네일 방어 우회 개편** — `scripts/fetch-thumbnails.ts` 전면 재작성 + `collector/fetch-html-batch.py`·`scripts/lib/cffi-fetch.ts` 신설 (2026-09-02, 7안 중 #2~#6만 채택, #1·#7 보류):
+
+- **#2 curl_cffi 브리지**: Python `curl_cffi.requests.Session(impersonate="chrome")`를 NDJSON 배치로 호출. TLS/HTTP2 지문 기반 방어 우회(collector에서 검증된 방식). Node `fetch`는 폴백.
+  - `fetch-html-batch.py`: stdin `{url,timeout_ms,host_group}` → stdout `{url,status,body,elapsed_ms}`. 호스트 그룹별 스로틀, 웜업(쿠키 선취득), max-body 2MB. 예외 삼키고 NDJSON 에러로 방출(배치 중단 없음).
+  - `cffi-fetch.ts`: **`execFileSync` + `input` 필수** — async `execFile`은 `input` 옵션을 지원 안 해 stdin이 빈 채로 실행됨(실측 bug: 전부 CffiExecFailed). partial stdout 복구 로직 포함.
+- **#3 네이버 계열 분리 스로틀**: `NAVER_HOSTS`(smartstore/brand/m.brand/brandconnect/shopping/storefarm/naver.me) = 10초 간격 + **24시간 쿨다운**(attempts>=1 이면 재시도 억제) + 세션 웜업(홈페이지 GET으로 쿠키 선취득). 실측: brand.naver 성공, m.smartstore는 429 남음 → 쿨다운으로 분산 예정.
+- **#4 비상품 URL 제외**: `NON_PRODUCT_HOSTS`(shoppinglive.naver, blog.naver, cafe.naver, pay.sktelecom, point.pay.naver, pay.naver, joytel, gift.kakao, gifting.kakao, giftishow, giftn, ofw.adison) + arca.live/b/·ppomppu/zboard/·fmkorea/hotdeal/ 게시판 스레드 누락. 발견 즉시 `attempts=MAX_ATTEMPTS` 영구 스킵 마커.
+- **#5 네이버 쇼핑 검색 폴백**: `searchNaverShop(query)` — `openapi.naver.com/v1/search/shop.json`, `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 필요(없으면 `"no-cred"` 반환 후 스킵). 대상 카테고리 = **생활/식품·패션/뷰티·기타**(다나와가 커버 못하는 영역). 다나와와 동일하게 토큰 중복률 ≥50% 검증. **활성화 조건**: developers.naver.com 무료 앱 등록(기존 `NAVER_ADS_*`는 Ads API라 별개).
+- **#6 Playwright 폴백**: `--playwright` 플래그 시에만 동작, `HARD_BLOCK_HOSTS`(coupang/gmarket/auction/epicgames 계열) 대상 헤드리스 Chromium 배치. **옵셔널 의존성** — 모듈명을 변수로 우회해 정적 import 해석 회피(미설치 상태에서도 `pnpm build` 통과). 설치 = `npm i -D playwright && npx playwright install chromium` (무거워 D1 커트오버 이후로 보류).
+- **타임아웃 여유화**: `DEFAULT_TIMEOUT_MS = 25000`, `SLOW_TIMEOUT_MS = 35000`(기존 12000). `SLOW_HOSTS` = aliexpress 계열 + toss.shopping/toss.im.
+- **실측(20-URL 배치)**: 13 성공/7 실패 = **65%** (기존 Node fetch ~30%). gmarket 0→100%, brand.naver 성공. 잔여 실패: coupang 403(Akamai Bot Manager → #6 Playwright 대기), m.smartstore/m.gmarket 429(#3 쿨다운으로 분산 예정), cjthemarket SPA(og:image 없음).
+- **기타 수정**: `--danawa-limit 0`·`--naver-limit 0` 무시 버그(`Number(x) || 10` 폴백이 0을 falsy로 취급) → `numArg(flag, fallback)` 헬퍼(`Number.isFinite && >= 0`). `PRAGMA busy_timeout = 10000` 추가(dev server/worker WAL 잠금 충돌 방지).
+
+**보류 결정** — #1(C버킷 재시도 정책 + Stage-1 해석된 리다이렉트 아키텍처 수정)과 #7(쿠팡 파트너스 API)은 사용자 지시로 제외. #7은 승인/발급 리스크, #1은 이번 개편으로 대부분 해소됨.
+
+**네이버 카페 핫딜 유입 가능성 조사(2026-09-02, 답: 공식 API는 부분 가능, 직접 크롤링은 불가)**:
+
+- **공식 Open API `/v1/search/cafearticle.json`**: 무료, 25,000 calls/day, `X-Naver-Client-Id`/`X-Naver-Client-Secret`(developers.naver.com 무료 앱 등록). 반환 = title/link/description/cafename/cafeurl. **한계**: (1) 키워드 검색 기반 — 게시판 피드 수집 아님. 핫딜 키워드("핫딜", "쿠친소", 상품 브랜드명 등)를 순회하며 조회해야 함. (2) 제목+스니펫만 제공, 본문 전문 없음 → 가격/URL 추출은 링크 따라가서 재수집 필요. (3) 검색 인덱스 지연 — 실시간 수집 불가(수 분~수 시간 lag).
+- **직접 크롤링 실측**: `cafe.naver.com` 홈 = 934바이트 SPA 셸(`section.cafe.naver.com/ca-fe/`로 리다이렉트), 게시글 목록 = 4,426바이트(내용 없음), `search.naver.com?where=cafe` = 1MB HTML(스크래핑 가능하나 로그인 마커·방어 리스크). **불가** 판정 — 카페 본문은 로그인 세션 + JS 렌더 필요, 방어 강도 높음.
+- **권장 접근**: 보류. 지금 파이프라인(커뮤니티 5곳 + LLM 추출 로드맵) 안정화가 우선. 네이버 카페는 (a) 키워드 세트가 확정되고 (b) 검색 지연을 허용하는 백필 용도가 생길 때 공식 API로 파일럿. 직접 크롤링은 방어 리스크 대비 편익이 낮아 비권장.
+
+**검증 게이트 통과**: `npx tsx tests/schema-validation-test.ts`(111 PASS) + `npx tsx tests/price-marker-regression-test.ts`(4 PASS) + `pnpm build`(clean, 18 routes). Playwright 옵셔널 의존성 처리로 빌드 무중단.

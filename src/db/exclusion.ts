@@ -11,6 +11,9 @@
  * 포인트·래플·응모, 프로모션·이벤트 홍보글, 라이브방송 홍보글,
  * 항공권·여행·숙박·이용권 등 실물 아닌 무형, 0원 딜(무료 배포).
  *
+ * 2026-09-02 추가(사용자 확정): 마트 전단, 통신사 할인(T데이 등),
+ * 라이브방송 혜택 요약(라방 정리/총정리/5원). 개별 규칙 주석 참조.
+ *
  * 실물 게임 하드웨어(콘솔·주변기기)는 제외하지 않는다 —
  * 그래서 통합 분류에서 게임/하드웨어를 게임/SW와 분리했다.
  *
@@ -70,6 +73,41 @@ const RENTAL_TITLE = /렌탈|렌털/;
 const TRAVEL_TITLE =
   /항공권|왕복|편도|숙박권?|호텔 ?예약|렌터카|렌트카|이용권|입장권|이스타항공|제주항공|진에어|티웨이|에어서울|에어부산|에어프레미아|대한항공|아시아나|(인천|부산|청주|제주|김포|김해|대구|무안|여수|원주|광주|서울)\s*[-~–]\s*[가-힣A-Za-z]{2,12}|(인천|부산|청주|제주|김포|김해|대구|무안|여수|원주|광주|서울)\s*[-~–]?\s*[가-힣A-Za-z]{2,12}\s+\d{3,4}\s*[-~–]\s*\d{3,4}|\d{1,2}\s*월\s*\d{1,2}\s*일?\s*[-~–]\s*\d{1,2}\s*일?/;
 
+/**
+ * 마트 전단 판정 — 2026-09-02 추가.
+ * 대형마트 주간 전단지("홈플러스 8/27~9/2 전단지", "이번주 전단")는
+ * 복수 상품을 한 게시글에 나열한 홍보물이라 단일 딜로 취급 불가.
+ * "전단"은 핫딜 게시판 컨텍스트에서 거의 마트 전단지 의미지만
+ * "전단계"(당뇨 전단계 등 의학 용어) 오탐이 실측 1건 있어
+ * negative lookahead로 제외한다.
+ */
+const MART_FLYER_TITLE = /전단(?!계)/;
+
+/**
+ * 통신사 할인 프로모션 데이 판정 — 2026-09-02 추가.
+ * T데이/KT데이/U+데이 등 캐리어 브랜드 데이 — 던킨·폴바셋·할리스 등
+ * 여러 브랜드 할인 묶음이라 단일 상품 아님.
+ * 오탐 방지: "티멤버십"/"KT멤버십" 단독은 실물 딜의 가격 조건으로
+ * 자주 등장하므로 제외([11번가] 삼다수 티멤버십 등). "데이"가 붙은
+ * 형태만 매치한다.
+ * 실측 매칭: "[T멤버십] T데이, 던킨&폴 바셋 음료 50% 할인 외",
+ * "[T멤버십] 이번주 T데이 혜택 (9/2)", "SKT T데이(8.12) 백억커피 100원".
+ */
+const TELECOM_TITLE =
+  /통신사 ?(할인|혜택|이벤트|프로모션|멤버십)|(SKT|KT|LG ?U\+|U\+|유플러스|T|티) ?데이|(SKT|KT|LGU\+|유플러스).{0,6}(멤버십 ?데이|프로모션|이벤트|할인 ?쿠폰)/;
+
+/**
+ * 라이브방송 혜택 요약 판정 — 2026-09-02 추가.
+ * 라방/라이브방송을 "정리·총정리·모음·예고" 형태로 묶은 글은
+ * 복수 상품 혜택 나열이라 단일 딜이 아니다.
+ * "라방 N원"(네이버페이 라방 5원 이벤트)도 상품 없는 홍보.
+ * 오탐 방지: "라이브 혜택가 93만원"(갤럭시26 실물 딜)처럼 실물
+ * 가격 수식어로 쓰인 경우는 잡지 않는다 — 정리/총정리/모음/예고
+ * 키워드가 있어야 매칭.
+ */
+const LIVE_BENEFIT_TITLE =
+  /(라방|라이브 ?방송|쇼핑 ?라이브|라이브).{0,15}(총정리|정리|모음|예고)|라방\s*\d+\s*원/;
+
 export interface ExclusionInput {
   /** 게시글 소속 커뮤니티 (네이티브 카테고리 매핑용) */
   community: string;
@@ -91,6 +129,9 @@ export interface ExclusionResult {
     | "software-title"
     | "rental-title"
     | "travel-title"
+    | "mart-flyer-title"
+    | "telecom-title"
+    | "live-benefit-title"
     | null;
   categoryNorm: NormCategory;
 }
@@ -125,6 +166,18 @@ export function checkExclusion(input: ExclusionInput): ExclusionResult {
 
   if (TRAVEL_TITLE.test(input.title)) {
     return { excluded: true, reason: "travel-title", categoryNorm };
+  }
+
+  if (MART_FLYER_TITLE.test(input.title)) {
+    return { excluded: true, reason: "mart-flyer-title", categoryNorm };
+  }
+
+  if (TELECOM_TITLE.test(input.title)) {
+    return { excluded: true, reason: "telecom-title", categoryNorm };
+  }
+
+  if (LIVE_BENEFIT_TITLE.test(input.title)) {
+    return { excluded: true, reason: "live-benefit-title", categoryNorm };
   }
 
   return { excluded: false, reason: null, categoryNorm };

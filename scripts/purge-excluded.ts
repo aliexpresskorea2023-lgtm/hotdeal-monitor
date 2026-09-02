@@ -27,6 +27,9 @@ if (!db) {
   process.exit(1);
 }
 
+/* dev 서버·워커와 WAL 경합 시 즉시 실패 방지(2026-09-02). */
+db.exec("PRAGMA busy_timeout = 10000;");
+
 interface JoinedRow {
   deal_id: number;
   post_rowid: number;
