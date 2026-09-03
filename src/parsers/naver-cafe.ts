@@ -176,10 +176,12 @@ export function parseNaverCafeItem(
   const postUrl = item.link || "";
   const postId = extractPostId(postUrl);
 
-  // 가격: 제목 → description 순으로 시도
+  // 가격: 제목에서만 추출.
+  // 맘카페 후기글은 본문에 가격을 부수적으로 언급하는 경우가 많아
+  // ("36,000원을 더 냈지만" 등) description 추출은 오탐을 유발한다.
+  // 핫딜 공지글은 제목에 가격을 명시하는 패턴 ("200개 48,000원" 등).
   const combinedText = `${title} ${description}`;
-  let price = extractPriceFromText(title);
-  if (price === null) price = extractPriceFromText(description);
+  const price = extractPriceFromText(title);
 
   // 통화: 텍스트 증거 → 스토어 추정 → 기본 KRW
   const detected = detectCurrency(combinedText, cafeName);

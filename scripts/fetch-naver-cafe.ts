@@ -249,6 +249,13 @@ function upsertPostAndDeal(
     deal.sourceMeta.rawPrice || null,
   );
 
+  // deal rowid 조회 (price_observations는 deals.id를 참조해야 함)
+  const dealRow = db
+    .prepare("SELECT id FROM deals WHERE post_rowid = ? AND seq = 0")
+    .get(postRow.id) as { id: number } | undefined;
+
+  if (!dealRow) return { inserted: true, excluded: null };
+
   // price observation — 가격이 변했을 때만
   const newPrice = product?.price ?? null;
   const oldPrice = existingDeal?.deal_price ?? null;
@@ -258,7 +265,7 @@ function upsertPostAndDeal(
          (deal_rowid, observed_at, post_status, deal_price, currency)
        VALUES (?, ?, 'unknown', ?, ?)`,
     ).run(
-      postRow.id,
+      dealRow.id,
       now,
       newPrice,
       product?.currency || "KRW",
@@ -289,6 +296,7 @@ async function main() {
   let totalPosts = 0;
   let totalDeals = 0;
   let totalExcluded = 0;
+  let skippedNoPrice = 0;
   const exclusionCounts: Record<ExclusionReason, number> = {
     category: 0,
     "zero-price": 0,
@@ -340,12 +348,17 @@ async function main() {
 
         const deal = parseNaverCafeItem(item, now);
 
+        // 가격 없는 글은 후기/질문글 → 수집 자체를 스킵
+        // (네이버 맘카페는 구매 링크 없이 가격만 언급하는 패턴.
+        //  가격이 없으면 핫딜 공지가 아닐 가능성이 높음)
+        const product0 = deal.products[0];
+        if (product0?.price === null || product0?.price === undefined) {
+          skippedNoPrice++;
+          continue;
+        }
+
         if (DRY_RUN) {
-          const product = deal.products[0];
-          const priceStr =
-            product?.price !== null && product?.price !== undefined
-              ? `${product.price.toLocaleString()}원`
-              : "가격없음";
+          const priceStr = `${product0.price.toLocaleString()}원`;
           console.log(
             `    · ${deal.title.slice(0, 50)}… [${deal.sourceMeta.cafeName}] ${priceStr}`,
           );
@@ -374,12 +387,12 @@ async function main() {
 
   if (DRY_RUN) {
     console.log(
-      `\n[dry-run] ${totalPosts}건 발견 (키워드 ${SEARCH_KEYWORDS.length}개)`,
+      `\n[dry-run] ${totalPosts}건 발견, ${skippedNoPrice}건 가격없음 스킵 (키워드 ${SEARCH_KEYWORDS.length}개)`,
     );
   } else {
     db!.close();
     console.log(
-      `\n[네이버 카페] 완료: ${totalPosts}건 발견, ${totalDeals}건 적재, ${totalExcluded}건 제외`,
+      `\n[네이버 카페] 완료: ${totalPosts}건 발견, ${totalDeals}건 적재, ${totalExcluded}건 제외, ${skippedNoPrice}건 가격없음 스킵`,
     );
     if (totalExcluded > 0) {
       const parts = Object.entries(exclusionCounts)
