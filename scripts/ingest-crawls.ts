@@ -273,6 +273,8 @@ function maybeAddObservation(
   db: Db,
   dealRowid: number,
   deal: Deal,
+  /** 게시글 작성 시각 — 첫 관측의 observed_at 기준 (null이면 수집 시각 폴백). */
+  postedAt?: string | null,
 ): boolean {
   const last = db
     .prepare(
@@ -306,6 +308,14 @@ function maybeAddObservation(
     return false;
   }
 
+  /*
+   * 첫 관측은 게시글 작성 시각을 사용 — 딜이 실제로 게시된 시점의 가격.
+   * 후속 관측은 수집 시각 — 가격 변동을 감지한 시점.
+   */
+  const observedAt = !last
+    ? (postedAt ?? nowKstIso())
+    : nowKstIso();
+
   db.prepare(
     `INSERT INTO price_observations (
        deal_rowid, observed_at, post_status,
@@ -314,7 +324,7 @@ function maybeAddObservation(
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     dealRowid,
-    nowKstIso(),
+    observedAt,
     status,
     price,
     deal.price.currency,
@@ -450,7 +460,7 @@ function ingestRun(db: Db, runDir: string): RunSummary {
 
       visibleCount += 1;
 
-      if (maybeAddObservation(db, dealRowid, item.deal)) {
+      if (maybeAddObservation(db, dealRowid, item.deal, post.postedAt)) {
         summary.observations += 1;
       }
     }

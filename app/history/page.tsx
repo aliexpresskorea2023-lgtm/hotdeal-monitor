@@ -1,6 +1,6 @@
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
-import { getPriceHistory, type HistoryItem } from "@/src/db/history";
+import { getPriceHistory } from "@/src/db/history";
 import { adminEnabled } from "@/src/lib/admin-gate";
 import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
@@ -36,11 +36,6 @@ function communityLogo(source: string): string | null {
   return (COMMUNITIES as readonly string[]).includes(source)
     ? COMMUNITY_LOGOS[source as Community]
     : null;
-}
-
-function lowestAt(item: HistoryItem): string {
-  const hit = item.points.find((p) => p.price === item.lowestPrice);
-  return hit?.observedAt ?? item.updatedAt;
 }
 
 export default async function HistoryPage({ searchParams }: PageProps) {
@@ -91,7 +86,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
           <input name="q" defaultValue={q} placeholder="상품명으로 검색" />
         </form>
         <a className={sort === "latest" ? "fchip active" : "fchip"} href={hrefFor("/history", current, { sort: null })}>
-          최근 업데이트
+          최신 게시순
         </a>
         <a className={sort === "drop" ? "fchip active" : "fchip"} href={hrefFor("/history", current, { sort: "drop" })}>
           인하폭 순
@@ -145,7 +140,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                     <span className="price">
                       {formatPrice(item.lowestPrice, item.currency, "")}
                     </span>
-                    <span className="price-sub">최저가 · {formatTime(lowestAt(item))}</span>
+                    <span className="price-sub">최저가 · {formatTime(item.postedAt)}</span>
                   </div>
 
                   <ChevronRight className="chev" size={16} />

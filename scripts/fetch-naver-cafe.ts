@@ -257,6 +257,8 @@ function upsertPostAndDeal(
   if (!dealRow) return { inserted: true, excluded: null };
 
   // price observation — 가격이 변했을 때만
+  // 참고: 네이버 카페 API는 게시글 작성 시각을 제공하지 않으므로
+  // 첫 관측도 수집 시각(now)을 사용. ingest-crawls.ts는 posted_at 우선.
   const newPrice = product?.price ?? null;
   const oldPrice = existingDeal?.deal_price ?? null;
   if (newPrice !== oldPrice) {

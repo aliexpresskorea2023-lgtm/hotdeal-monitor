@@ -173,6 +173,7 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
             </span>
             <span className="tag">{item.categoryNorm}</span>
             <span className="tag">관측 {item.points.length}회</span>
+            <span className="tag">{formatTime(item.postedAt)}</span>
           </div>
         </div>
 

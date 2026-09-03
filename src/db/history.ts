@@ -62,6 +62,9 @@ export interface HistoryItem {
   /** 최신 관측이 이력 최저가와 같은지 */
   atLowest: boolean;
   points: PricePoint[];
+  /** 게시글 작성 시각 (정렬·표시 기준). null이면 first_seen_at 폴백. */
+  postedAt: string;
+  /** 마지막 관측 시각 (참고용) */
   updatedAt: string;
 }
 
@@ -109,6 +112,8 @@ interface DealJoinRow {
   status: string;
   status_override: string | null;
   last_seen_at: string;
+  posted_at: string | null;
+  first_seen_at: string;
 }
 
 function toStatus(raw: string): PostStatus {
@@ -146,17 +151,20 @@ export function getPriceHistory(
     const observationCount = totals?.observations ?? 0;
     const trackedCount = totals?.tracked ?? 0;
 
-    /* 값이 실제로 변한 딜(관측 2건 이상)만, 최근 변동 순으로. */
+    /* 값이 실제로 변한 딜(관측 2건 이상)만, 게시 시각 최신순. */
     const changed = db
       .prepare(
-        `SELECT deal_rowid, MAX(observed_at) AS last_at
-         FROM price_observations
-         GROUP BY deal_rowid
+        `SELECT po.deal_rowid,
+                COALESCE(p.posted_at, p.first_seen_at) AS posted_at
+         FROM price_observations po
+         JOIN deals d ON d.id = po.deal_rowid
+         JOIN posts p ON p.id = d.post_rowid
+         GROUP BY po.deal_rowid
          HAVING COUNT(*) >= 2
-         ORDER BY last_at DESC
+         ORDER BY posted_at DESC
          LIMIT ?`,
       )
-      .all(limit) as unknown as { deal_rowid: number; last_at: string }[];
+      .all(limit) as unknown as { deal_rowid: number; posted_at: string }[];
 
     if (changed.length === 0) {
       return {
@@ -177,7 +185,8 @@ export function getPriceHistory(
                 d.name_override, d.store_override, d.category_override,
                 d.excluded_reason, d.exclusion_restored,
                 p.community, p.title, p.url AS post_url,
-                p.status, p.status_override, p.last_seen_at
+                p.status, p.status_override, p.last_seen_at,
+                p.posted_at, p.first_seen_at
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
          WHERE d.id IN (${placeholders})`,
@@ -316,6 +325,7 @@ export function getPriceHistory(
           lowestPrice !== null &&
           currentPrice <= lowestPrice,
         points,
+        postedAt: deal.posted_at ?? deal.first_seen_at,
         updatedAt: points[points.length - 1].observedAt,
       });
       imageKeys.push(imageKey);
@@ -364,7 +374,8 @@ export function getPriceHistory(
         if (diff !== 0) return diff;
       }
 
-      return b.updatedAt.localeCompare(a.updatedAt) || a.dealId - b.dealId;
+      /* 게시 시각 최신순 — 수집 시점이 아닌 글 게시 기준. */
+      return b.postedAt.localeCompare(a.postedAt) || a.dealId - b.dealId;
     });
 
     return { items, hasData: true, trackedCount, observationCount };
