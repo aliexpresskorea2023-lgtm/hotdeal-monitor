@@ -15,7 +15,7 @@ export function GET() {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  const gate = adminGate();
+  const gate = adminGate(req);
   if (gate) return gate;
 
   const { id } = await params;

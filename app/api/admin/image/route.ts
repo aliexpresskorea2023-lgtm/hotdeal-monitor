@@ -19,7 +19,7 @@ export function GET() {
 }
 
 export async function POST(req: Request) {
-  const gate = adminGate();
+  const gate = adminGate(req);
   if (gate) return gate;
 
   const body = (await req.json()) as {
