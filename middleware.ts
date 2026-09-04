@@ -1,39 +1,45 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { adminAuthConfigured } from "@/src/lib/admin-gate";
+import { ADMIN_SESSION_COOKIE, verifySession } from "@/src/lib/admin-session";
 
 /*
- * 어드민 인증 미들웨어 — 레이아웃보다 먼저 실행된다.
+ * 어드민 인증 미들웨어 — 레이아웃보다 먼저 실행된다(Edge 런타임).
  *
- * 역할: ADMIN_TOKEN이 설정된 환경(프로덕션)에서 /admin/* 접근을
- * 쿠키로 검증하고, 미인증이면 /admin/login으로 보낸다.
+ * 통과 조건(하나라도):
+ *   - GitHub OAuth 세션 쿠키(admin_session, HMAC) 유효
+ *   - break-glass admin_token 쿠키 === ADMIN_TOKEN
+ * 인증 수단이 아예 없는 로컬 개발은 통과.
  *
- * 레이아웃(app/admin/layout.tsx)은 ADMIN_MODE 게이트(404)만 담당하고,
- * 인증 리다이렉트는 여기서 처리한다. 그래야 /admin/login이
- * 레이아웃의 리다이렉트와 충돌해 무한 루프에 빠지지 않는다.
+ * 미인증은 /admin/login으로. 단 /admin/login 자체는 검사 제외(무한루프 방지).
+ * 인증 리다이렉트를 여기서 처리하므로 레이아웃은 ADMIN_MODE 게이트만 본다.
  *
- * API(/api/admin/*)는 matcher에 잡히지 않으며, 각 라우트의
- * adminGate(req)가 Bearer/쿠키를 검사한다.
+ * API(/api/admin/*)는 matcher에 잡히지 않으며 각 라우트의 adminGate(req)가
+ * Bearer/세션/쿠키를 검사한다.
  */
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 로그인 페이지는 인증 검사 제외 (무한 루프 방지)
+  // 로그인 페이지·정적 자산은 검사 제외
   if (pathname === "/admin/login") {
     return NextResponse.next();
   }
 
-  // 토큰 미설정(로컬 개발)이면 인증 불요
-  const token = process.env.ADMIN_TOKEN;
-  if (!token) return NextResponse.next();
+  // 인증 수단이 없는 로컬 개발 — 통과
+  if (!adminAuthConfigured()) return NextResponse.next();
 
-  // 쿠키 검증
-  const cookie = request.cookies.get("admin_token")?.value;
-  if (cookie === token) return NextResponse.next();
+  // 1) GitHub 세션 쿠키
+  const sessionCookie = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  if (await verifySession(sessionCookie)) return NextResponse.next();
+
+  // 2) break-glass admin_token 쿠키
+  const token = process.env.ADMIN_TOKEN;
+  const tokenCookie = request.cookies.get("admin_token")?.value;
+  if (token && tokenCookie === token) return NextResponse.next();
 
   // 미인증 → 로그인으로
-  const loginUrl = new URL("/admin/login", request.url);
-  return NextResponse.redirect(loginUrl);
+  return NextResponse.redirect(new URL("/admin/login", request.url));
 }
 
 export const config = {

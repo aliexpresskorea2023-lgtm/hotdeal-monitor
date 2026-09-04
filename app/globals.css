@@ -1558,6 +1558,47 @@ a {
   color: var(--muted-foreground);
 }
 
+/* 사이드바 하단 — 로그인한 어드민 핸들 + 로그아웃 (2026-09-04). */
+.admin-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 12px;
+}
+
+.admin-handle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.admin-logout:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
 .admin-head {
   display: flex;
   align-items: center;

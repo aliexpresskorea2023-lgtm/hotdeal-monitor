@@ -20,7 +20,7 @@ export function GET() {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  const gate = adminGate(req);
+  const gate = await adminGate(req);
   if (gate) return gate;
 
   const { id } = await params;
@@ -52,7 +52,7 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(req: Request, { params }: Params) {
-  const gate = adminGate(req);
+  const gate = await adminGate(req);
   if (gate) return gate;
 
   const { id } = await params;
