@@ -250,6 +250,56 @@ function toD1Param(value: SqlValue | undefined): string | number | null {
   );
 }
 
+/**
+ * D1 REST API 바인딩 파라미터 한계 (~100개).
+ * 초과 시 SQL 인라인 모드로 자동 전환한다.
+ */
+const D1_MAX_PARAMS = 90;
+
+/** SqlValue → SQL 리터럴 (인라인 모드용). */
+function sqlLiteral(value: SqlValue | undefined): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
+  if (typeof value === "bigint") return String(value);
+  if (typeof value === "string") return `'${value.replace(/'/g, "''")}'`;
+  if (value instanceof Uint8Array) return `X'${Buffer.from(value).toString("hex")}'`;
+  return "NULL";
+}
+
+/**
+ * SQL의 ? 플레이스홀더를 리터럴 값으로 치환.
+ * 문자열 리터럴 내부의 ?는 건드리지 않는다.
+ */
+function inlineParams(sql: string, params: SqlValue[]): string {
+  let idx = 0;
+  let result = "";
+  let inString = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+
+    if (ch === "'" && !inString) {
+      inString = true;
+      result += ch;
+    } else if (ch === "'" && inString) {
+      // '' 이스케이프 확인
+      if (i + 1 < sql.length && sql[i + 1] === "'") {
+        result += "''";
+        i++;
+      } else {
+        inString = false;
+        result += ch;
+      }
+    } else if (ch === "?" && !inString && idx < params.length) {
+      result += sqlLiteral(params[idx++]);
+    } else {
+      result += ch;
+    }
+  }
+
+  return result;
+}
+
 class D1Statement implements Statement {
   constructor(
     private readonly config: D1Config,
@@ -257,12 +307,16 @@ class D1Statement implements Statement {
   ) {}
 
   private query(params: SqlValue[]): D1StatementResult {
-    const body: { sql: string; params?: Array<string | number | null> } = {
-      sql: this.sql,
-    };
-    const sanitized = params.map(toD1Param);
+    let body: { sql: string; params?: Array<string | number | null> };
 
-    if (sanitized.length > 0) body.params = sanitized;
+    if (params.length > D1_MAX_PARAMS) {
+      /* 파라미터 한계 초과 — SQL 인라인 모드로 전환. */
+      body = { sql: inlineParams(this.sql, params) };
+    } else {
+      body = { sql: this.sql };
+      const sanitized = params.map(toD1Param);
+      if (sanitized.length > 0) body.params = sanitized;
+    }
 
     const results = d1QuerySync(this.config, body);
 

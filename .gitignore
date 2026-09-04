@@ -49,6 +49,7 @@ __pycache__/
 # 외부 디자인 도구 작업 디렉터리 (배포 업로드 경량화)
 /onlook/
 
-# sqlite db — hotdeal.db는 Vercel 배포용으로 커밋에 포함한다
+# sqlite db — D1 컷오버 이후 로컬 DB는 git에서 제외 (2026-09-03)
+/data/hotdeal.db
 /data/hotdeal.db-wal
 /data/hotdeal.db-shm
