@@ -1,4 +1,5 @@
-import { getDealFeed, hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
+import { hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
+import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
 import {
@@ -100,7 +101,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
       ? rawCommunity
       : null;
 
-  const { items, hasData } = getDealFeed({ category, store, community });
+  const { items, hasData } = await getCachedDealFeed({ category, store, community });
 
   const nowMs = Date.now();
   const ranked = [...items]

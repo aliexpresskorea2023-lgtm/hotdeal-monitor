@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { adminGate } from "@/src/lib/admin-gate";
+import { DEALS_CACHE_TAG } from "@/src/db/cached";
 import {
   deleteObservation,
   openAdminDb,
@@ -43,6 +45,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     patchObservation(db, obsId, price);
+    revalidateTag(DEALS_CACHE_TAG, { expire: 0 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });
@@ -65,6 +68,7 @@ export async function DELETE(req: Request, { params }: Params) {
 
   try {
     deleteObservation(db, obsId);
+    revalidateTag(DEALS_CACHE_TAG, { expire: 0 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

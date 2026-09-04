@@ -1,5 +1,6 @@
 import { Eye, MessageCircle } from "lucide-react";
-import { getDealFeed, type ItemView } from "@/src/db/queries";
+import { type ItemView } from "@/src/db/queries";
+import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
 import {
@@ -230,7 +231,7 @@ export default async function Home({ searchParams }: PageProps) {
   const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
 
   /* 전체 규모 표시용 전체 피드. 스토어 칩은 고정 목록. */
-  const all = getDealFeed();
+  const all = await getCachedDealFeed({});
 
   const category: NormCategory | null = (CATEGORIES as readonly string[]).includes(
     rawCat ?? "",
@@ -252,7 +253,7 @@ export default async function Home({ searchParams }: PageProps) {
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const sort = rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
 
-  const { items, hasData, lastIngestedAt } = getDealFeed({
+  const { items, hasData, lastIngestedAt } = await getCachedDealFeed({
     category,
     store,
     community,

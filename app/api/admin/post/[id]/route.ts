@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { adminGate } from "@/src/lib/admin-gate";
+import { DEALS_CACHE_TAG } from "@/src/db/cached";
 import { openAdminDb, patchPost } from "@/src/db/admin";
 
 /*
@@ -42,6 +44,7 @@ export async function PATCH(req: Request, { params }: Params) {
         body.hidden === 0 || body.hidden === 1 ? body.hidden : undefined,
     });
 
+    revalidateTag(DEALS_CACHE_TAG, { expire: 0 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

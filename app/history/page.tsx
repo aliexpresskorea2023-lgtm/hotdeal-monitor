@@ -1,6 +1,6 @@
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
-import { getPriceHistory } from "@/src/db/history";
+import { getCachedPriceHistory } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
 import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
@@ -50,10 +50,11 @@ export default async function HistoryPage({ searchParams }: PageProps) {
   const sort = firstParam(raw.sort) === "drop" ? "drop" : "latest";
   const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
 
-  const { items, hasData, trackedCount, observationCount } = getPriceHistory({
-    limit: 1000,
-    sort,
-  });
+  const { items, hasData, trackedCount, observationCount } =
+    await getCachedPriceHistory({
+      limit: 1000,
+      sort,
+    });
 
   const lowered = q.toLowerCase();
   const filtered = q

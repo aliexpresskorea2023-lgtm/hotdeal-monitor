@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { adminGate } from "@/src/lib/admin-gate";
+import { DEALS_CACHE_TAG } from "@/src/db/cached";
 import {
   openAdminDb,
   resetImageCache,
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
+    revalidateTag(DEALS_CACHE_TAG, { expire: 0 });
     return NextResponse.json({ ok: true });
   } finally {
     db.close();
