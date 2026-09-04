@@ -49,27 +49,29 @@ export function loadResolutions(
 
   if (targets.length === 0) return result;
 
-  /* sqlite 바인드 변수 상한 대비 청크 분할. */
-  for (let i = 0; i < targets.length; i += 900) {
-    const chunk = targets.slice(i, i + 900);
-    const ph = chunk.map(() => "?").join(", ");
-
-    let rows: { source_url: string; resolved_url: string }[];
-
-    try {
-      rows = db
-        .prepare(
-          `SELECT source_url, resolved_url FROM link_resolutions
-           WHERE source_url IN (${ph}) AND resolved_url IS NOT NULL`,
-        )
-        .all(...chunk) as { source_url: string; resolved_url: string }[];
-    } catch {
-      return result;
-    }
+  /*
+   * 해석 테이블 전체를 한 번에 읽어 지도로 만든다.
+   * 예전엔 source_url IN (...)으로 요청 키만 조회했지만, D1은 바인드
+   * 파라미터가 많으면 SQL을 인라인으로 전개해 문장이 100KB 상한
+   * (SQLITE_TOOBIG)을 넘을 수 있다. link_resolutions는 단축링크 해석만
+   * 담아 규모가 작으므로(수백 행) 전체 조회가 안전하고 단순하다.
+   * 호출부는 resolutions.get(url)만 쓰므로 지도가 요청 외 항목을
+   * 포함해도 동작은 동일하다.
+   * 테이블 미생성 환경(구 스냅샷)은 catch로 빈 지도 흡수.
+   */
+  try {
+    const rows = db
+      .prepare(
+        `SELECT source_url, resolved_url FROM link_resolutions
+         WHERE resolved_url IS NOT NULL`,
+      )
+      .all() as { source_url: string; resolved_url: string }[];
 
     for (const row of rows) {
       result.set(row.source_url, row.resolved_url);
     }
+  } catch {
+    return new Map();
   }
 
   return result;

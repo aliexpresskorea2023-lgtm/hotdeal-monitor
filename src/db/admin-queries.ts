@@ -432,14 +432,21 @@ function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
     const keys = [...rows.keys()];
 
     if (keys.length > 0) {
-      /* 키가 많아도 IN 절 한 번 — 로컬 어드민 규모라 무방. */
-      const ph = keys.map(() => "?").join(", ");
+      /*
+       * product_images 전체를 읽어 키로 매칭한다.
+       * 예전엔 product_key IN (?) 목록을 썼지만, 썸네일 화면은 전체
+       * 딜(수천)을 상품 키로 묶어 키가 수천 개가 된다. D1은 바인드
+       * 파라미터가 많으면 SQL을 인라인으로 전개하는데, 긴 문자열 키
+       * 수천 개면 문장이 100KB 상한(SQLITE_TOOBIG)을 넘어 500이 났다.
+       * product_images는 상품 키당 1행이라 규모가 작으므로(2.4k행)
+       * 전체 조회 후 JS 매칭이 안전하다.
+       */
       const imgs = db
         .prepare(
           `SELECT product_key, image_url, image_override, attempts
-           FROM product_images WHERE product_key IN (${ph})`,
+           FROM product_images`,
         )
-        .all(...keys) as Array<{
+        .all() as Array<{
         product_key: string;
         image_url: string;
         image_override: string | null;
