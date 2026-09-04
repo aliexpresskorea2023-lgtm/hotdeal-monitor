@@ -573,6 +573,105 @@ a {
   color: var(--foreground);
 }
 
+/* 공개 페이지 "수정" 모달 — 편집 페이지를 iframe 레이어로 (2026-09-04). */
+.edit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+
+.edit-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 94vw);
+  height: 88vh;
+  overflow: hidden;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.edit-modal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.edit-modal-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.edit-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-modal-newtab {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+
+.edit-modal-newtab:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.edit-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.edit-modal-close:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.edit-modal-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--background);
+}
+
+/* embed 모드 — iframe 안 편집 페이지에서 사이드바 등 chrome 숨김. */
+.embed .sidebar {
+  display: none;
+}
+
+.embed .shell {
+  display: block;
+}
+
+.embed .main {
+  max-width: none;
+  padding: 18px 20px 40px;
+}
+
 .btn.sm {
   padding: 5px 10px;
   font-size: 11px;

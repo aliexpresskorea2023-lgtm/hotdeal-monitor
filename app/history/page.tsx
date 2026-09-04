@@ -1,7 +1,8 @@
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { getPriceHistory } from "@/src/db/history";
-import { adminEnabled } from "@/src/lib/admin-gate";
+import { getAdminViewer } from "@/src/lib/admin-viewer";
+import { AdminEditLink } from "@/components/admin/edit-modal";
 import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
@@ -41,8 +42,9 @@ function communityLogo(source: string): string | null {
 export default async function HistoryPage({ searchParams }: PageProps) {
   const raw = await searchParams;
 
-  /* 어드민 빌드(로컬)에서만 카드 수정 바로가기 노출. */
-  const adminMode = adminEnabled();
+  /* 어드민 로그인 사용자에게만 카드 수정 버튼 노출. */
+  const viewer = await getAdminViewer();
+  const adminMode = viewer.login !== null;
 
   const q = (firstParam(raw.q) ?? "").trim();
   const sort = firstParam(raw.sort) === "drop" ? "drop" : "latest";
@@ -146,13 +148,10 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                   <ChevronRight className="chev" size={16} />
                 </Link>
                 {adminMode && (
-                  <a
+                  <AdminEditLink
+                    dealId={item.dealId}
                     className="btn ghost sm admin-edit"
-                    href={`/admin/deals/${item.dealId}`}
-                    title="어드민 카드 관리에서 열기"
-                  >
-                    수정
-                  </a>
+                  />
                 )}
               </div>
             );

@@ -1,5 +1,6 @@
 import { getDealFeed, hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
-import { adminEnabled } from "@/src/lib/admin-gate";
+import { getAdminViewer } from "@/src/lib/admin-viewer";
+import { AdminEditLink } from "@/components/admin/edit-modal";
 import {
   CATEGORIES,
   COMMUNITIES,
@@ -74,8 +75,9 @@ function viewsSum(item: ItemView): number {
 export default async function RankingPage({ searchParams }: PageProps) {
   const raw = await searchParams;
 
-  /* 어드민 빌드(로컬)에서만 카드 수정 바로가기 노출. */
-  const adminMode = adminEnabled();
+  /* 어드민 로그인 사용자에게만 카드 수정 버튼 노출. */
+  const viewer = await getAdminViewer();
+  const adminMode = viewer.login !== null;
 
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
@@ -304,13 +306,10 @@ export default async function RankingPage({ searchParams }: PageProps) {
                     원문링크
                   </a>
                   {adminMode && (
-                    <a
+                    <AdminEditLink
+                      dealId={item.firstSource.dealId}
                       className="btn ghost sm admin-edit"
-                      href={`/admin/deals/${item.firstSource.dealId}`}
-                      title="어드민 카드 관리에서 열기"
-                    >
-                      수정
-                    </a>
+                    />
                   )}
                 </span>
               </div>
