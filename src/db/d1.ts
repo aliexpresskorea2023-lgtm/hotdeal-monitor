@@ -34,6 +34,19 @@ const WAIT_SLICE_MS = 5_000;
 const SAB_BYTES = 16 * 1024 * 1024; // 응답 버퍼 상한
 const PAYLOAD_OFFSET = 8; // 헤더: [0]=완료 플래그, [1]=페이로드 길이
 
+// 워커 내부 fetch 중단 시간. REQUEST_TIMEOUT_MS보다 반드시 짧아야 워커가
+// 먼저 깨끗한 오류 envelope을 finish()로 돌려주고, 메인 스레드의 SAB
+// 데드라인(60s)은 진짜 최후의 보루로만 동작한다. 이게 없으면 fetch가 행업했을
+// 때 워커가 영구히 wedged되어 재시도 postMessage가 SAB 레이스를 낸다.
+const WORKER_FETCH_TIMEOUT_MS = 50_000;
+
+// 전송 계층 재시도 — 2026-09-07 장애(적재 중 단일 D1 요청 60s 행업 → 전체
+// 프로세스 crash → run_id 미기록 → 큐 선두 차단)의 구조적 재발 방지.
+// 재시도 대상은 일시적 오류(시간초과·네트워크·429/5xx·SQLITE_BUSY/AUTH
+// 스로틀)뿐이고, SQLITE_TOOBIG 같은 진짜 SQL 오류는 재시도하지 않는다.
+const MAX_ATTEMPTS = 4;
+const BACKOFF_BASE_MS = 1_500;
+
 // 워커 소스 — CJS 문자열. 공유 버퍼는 workerData로 한 번만 받는다.
 const WORKER_SOURCE = `
 "use strict";
@@ -66,6 +79,8 @@ function finish(envelope) {
 
 parentPort.on("message", async (msg) => {
   const { url, token, body } = msg;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ${WORKER_FETCH_TIMEOUT_MS});
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -74,6 +89,7 @@ parentPort.on("message", async (msg) => {
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: ac.signal,
     });
     const text = await res.text();
     let json = null;
@@ -89,7 +105,17 @@ parentPort.on("message", async (msg) => {
       snippet: json ? null : text.slice(0, 400),
     });
   } catch (err) {
-    finish({ ok: false, error: err && err.message ? err.message : String(err) });
+    const aborted = ac.signal.aborted;
+    finish({
+      ok: false,
+      error: aborted
+        ? "D1 워커 fetch 시간 초과 (" + ${WORKER_FETCH_TIMEOUT_MS} / 1000 + "s) — 중단됨"
+        : err && err.message
+          ? err.message
+          : String(err),
+    });
+  } finally {
+    clearTimeout(timer);
   }
 });
 `;
@@ -167,7 +193,56 @@ function ensureBridge(): Worker {
   return worker;
 }
 
-export function d1QuerySync(
+/** wedged 워커를 버리고 다음 ensureBridge()가 새로 만들게 한다. */
+function resetBridge(): void {
+  if (worker) {
+    try {
+      worker.terminate();
+    } catch {
+      /* 이미 죽은 워커 — 무시 */
+    }
+    worker = null;
+  }
+  header = null;
+  payloadView = null;
+}
+
+/** 동기 블록킹 슬립 — 재시도 백오프용 (이 컨텍스트는 전부 동기). */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * 일시적(재시도 가치 있음) 오류 판별.
+ * 진짜 SQL 오류(SQLITE_TOOBIG=구문 비대 등)는 재시도해도 똑같이 실패하므로 제외.
+ */
+function isRetryableError(message: string): boolean {
+  if (message.includes("SQLITE_TOOBIG") || message.includes("statement too long")) {
+    return false;
+  }
+  if (/D1 HTTP (429|5\d\d)/.test(message)) return true;
+  if (
+    message.includes("SQLITE_BUSY") ||
+    message.includes("SQLITE_AUTH") ||
+    message.includes("not authorized")
+  ) {
+    return true;
+  }
+  if (message.includes("D1 요청 시간 초과")) return true; // 메인 SAB 데드라인
+  if (message.includes("D1 요청 실패")) return true; // 워커 abort/fetch 오류 envelope
+  if (message.includes("D1 브리지 초기화 실패")) return true;
+  if (message.includes("응답 파싱 실패")) return true;
+  if (
+    /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|aborted|other side closed|network/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function d1QueryOnce(
   config: D1Config,
   body: { sql: string; params?: Array<string | number | null> },
 ): D1StatementResult[] {
@@ -224,6 +299,44 @@ export function d1QuerySync(
   }
 
   return json.result ?? [];
+}
+
+export function d1QuerySync(
+  config: D1Config,
+  body: { sql: string; params?: Array<string | number | null> },
+): D1StatementResult[] {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return d1QueryOnce(config, body);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      lastError = err instanceof Error ? err : new Error(message);
+
+      const retryable = isRetryableError(message);
+      if (!retryable || attempt === MAX_ATTEMPTS) {
+        throw lastError;
+      }
+
+      // 메인 스레드 데드라인이 걸린 경우 워커가 아직 in-flight일 수 있으므로
+      // 브리지를 재활용해 SAB 레이스를 원천 차단한다.
+      if (message.includes("D1 요청 시간 초과")) {
+        resetBridge();
+      }
+
+      // 지수 백오프: 1.5s, 3s, 6s (약간의 지터).
+      const backoff =
+        BACKOFF_BASE_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 400);
+      process.stderr.write(
+        `[d1] 일시적 오류 재시도 ${attempt}/${MAX_ATTEMPTS - 1} ` +
+          `(${backoff}ms 후): ${message.slice(0, 160)}\n`,
+      );
+      sleepSync(backoff);
+    }
+  }
+
+  throw lastError ?? new Error("D1 요청 실패 (알 수 없는 오류)");
 }
 
 /** node:sqlite 바인딩 값을 D1 REST 파라미터(JSON 안전 값)로 변환. */

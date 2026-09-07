@@ -551,23 +551,34 @@ function main(): void {
   console.log(`DB: ${dbPath}`);
 
   let totals = { snapshots: 0, posts: 0, deals: 0, observations: 0, invalid: 0 };
+  const failedRuns: Array<{ run: string; error: string }> = [];
 
   for (const runDir of targets) {
-    console.log(`\n========== run ${path.basename(runDir)} ==========`);
+    const runName = path.basename(runDir);
+    console.log(`\n========== run ${runName} ==========`);
 
-    const s = ingestRun(db, runDir);
+    try {
+      const s = ingestRun(db, runDir);
 
-    console.log(
-      `  스냅샷 ${s.snapshots}건 → posts ${s.posts} upsert, ` +
-        `deals ${s.deals} upsert, 관측 +${s.observations}` +
-        (s.skippedInvalid > 0 ? `, 스킵 ${s.skippedInvalid}` : ""),
-    );
+      console.log(
+        `  스냅샷 ${s.snapshots}건 → posts ${s.posts} upsert, ` +
+          `deals ${s.deals} upsert, 관측 +${s.observations}` +
+          (s.skippedInvalid > 0 ? `, 스킵 ${s.skippedInvalid}` : ""),
+      );
 
-    totals.snapshots += s.snapshots;
-    totals.posts += s.posts;
-    totals.deals += s.deals;
-    totals.observations += s.observations;
-    totals.invalid += s.skippedInvalid;
+      totals.snapshots += s.snapshots;
+      totals.posts += s.posts;
+      totals.deals += s.deals;
+      totals.observations += s.observations;
+      totals.invalid += s.skippedInvalid;
+    } catch (err) {
+      // 하나의 run이 실패해도 큐 전체를 멈추지 않는다(2026-09-07 선두차단
+      // 장애 재발 방지). 성공한 run은 ingest_runs에 이미 기록됐으므로 다음
+      // 주기는 실패한 run만 다시 시도한다.
+      const message = err instanceof Error ? err.message : String(err);
+      failedRuns.push({ run: runName, error: message });
+      console.error(`  [실패] run ${runName}: ${message.slice(0, 300)}`);
+    }
   }
 
   const postCount = (
@@ -589,6 +600,17 @@ function main(): void {
       (totals.invalid > 0 ? ` / 스킵 ${totals.invalid}` : ""),
   );
   console.log(`DB 누적: posts ${postCount} / deals ${dealCount} / 관측 ${obsCount}`);
+
+  if (failedRuns.length > 0) {
+    console.error(
+      `\n실패한 run ${failedRuns.length}개 (다음 주기에 재시도 — 큐는 차단되지 않음):`,
+    );
+    for (const f of failedRuns) {
+      console.error(`  - ${f.run}: ${f.error.slice(0, 200)}`);
+    }
+    // 파이프라인이 문제를 감지하게 비영(非0) 종료 코드를 남기되, 성공분은 이미 기록됨.
+    process.exitCode = 1;
+  }
 }
 
 main();
