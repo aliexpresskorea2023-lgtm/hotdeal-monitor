@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { listAdminDeals } from "@/src/db/admin-queries";
+import {
+  getCachedAdminDealCount,
+  getCachedAdminDealList,
+} from "@/src/db/admin-cached";
 import { CATEGORIES } from "@/src/db/taxonomy";
 import { ExcludedActions } from "@/components/admin/excluded-actions";
 import { CategoryPicker } from "@/components/admin/category-picker";
@@ -39,24 +42,27 @@ export default async function AdminExcludedPage({ searchParams }: PageProps) {
   const view = firstParam(sp.view) === "uncategorized" ? "uncategorized" : "excluded";
   const page = Number(firstParam(sp.page)) || 1;
 
-  const excludedCount = listAdminDeals({
-    excludedOnly: true,
-    includeHidden: true,
-    page: 1,
-    pageSize: 1,
-  }).total;
-  const uncategorizedCount = listAdminDeals({
-    uncategorizedOnly: true,
-    includeHidden: true,
-    page: 1,
-    pageSize: 1,
-  }).total;
-
-  const result = listAdminDeals(
-    view === "uncategorized"
-      ? { uncategorizedOnly: true, includeHidden: true, page, pageSize: PAGE_SIZE }
-      : { excludedOnly: true, includeHidden: true, page, pageSize: PAGE_SIZE },
-  );
+  /*
+   * 2026-09-08: 탭 카운트를 countAdminDeals로 교체 + 캐시 래퍼 경유.
+   * 기존 listAdminDeals({pageSize:1}).total 패턴은 COUNT 외에 LIMIT 1
+   * SELECT와 attachImages까지 실행시켜 탭 하나당 ~7k행을 낭비했다.
+   * 캐시 래퍼는 DEALS_CACHE_TAG로 어드민 쓰기 시 즉시 무효화된다.
+   */
+  const [excludedCount, uncategorizedCount, result] = await Promise.all([
+    getCachedAdminDealCount({
+      excludedOnly: true,
+      includeHidden: true,
+    }),
+    getCachedAdminDealCount({
+      uncategorizedOnly: true,
+      includeHidden: true,
+    }),
+    getCachedAdminDealList(
+      view === "uncategorized"
+        ? { uncategorizedOnly: true, includeHidden: true, page, pageSize: PAGE_SIZE }
+        : { excludedOnly: true, includeHidden: true, page, pageSize: PAGE_SIZE },
+    ),
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
 

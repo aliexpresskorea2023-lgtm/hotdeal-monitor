@@ -131,6 +131,101 @@ const BASE_SELECT = `
   FROM deals d
   JOIN posts p ON p.id = d.post_rowid`;
 
+/**
+ * AdminListOptions에서 SQL WHERE 절과 바인드 파라미터를 합성한다.
+ * listAdminDeals와 countAdminDeals가 공유 — 필터 로직 중복 방지.
+ */
+function buildAdminWhere(options: AdminListOptions): {
+  whereSql: string;
+  params: (string | number)[];
+} {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (!options.includeHidden) {
+    where.push("d.hidden = 0 AND p.hidden = 0");
+  }
+
+  if (options.excludedOnly) {
+    /* 복원 시 excluded_reason이 지워지므로 복원 마커도 포함해야
+       복원 철회(재제외) 입구가 사라지지 않는다. */
+    where.push("(d.excluded_reason IS NOT NULL OR d.exclusion_restored = 1)");
+  }
+
+  if (options.overriddenOnly) {
+    where.push(
+      `(d.name_override IS NOT NULL OR d.price_override IS NOT NULL
+        OR d.category_override IS NOT NULL OR d.store_override IS NOT NULL
+        OR d.url_override IS NOT NULL)`,
+    );
+  }
+
+  if (options.uncategorizedOnly) {
+    where.push(
+      `COALESCE(d.category_override, d.category) IS NULL
+       AND d.excluded_reason IS NULL`,
+    );
+  }
+
+  if (options.status === "active") {
+    where.push(`COALESCE(p.status_override, p.status) != 'ended'`);
+  } else if (options.status === "ended") {
+    where.push(`COALESCE(p.status_override, p.status) = 'ended'`);
+  }
+
+  if (options.community) {
+    where.push("p.community = ?");
+    params.push(options.community);
+  }
+
+  if (options.q) {
+    const needle = options.q.trim();
+
+    if (needle.length > 0) {
+      where.push(
+        `(COALESCE(d.name_override, d.product_name) LIKE ?
+          OR p.title LIKE ?)`,
+      );
+      params.push(`%${needle}%`, `%${needle}%`);
+    }
+  }
+
+  return {
+    whereSql: where.length > 0 ? `WHERE ${where.join(" AND ")}` : "",
+    params,
+  };
+}
+
+/**
+ * 조건 만족 딜 수만 반환 — 탭 카운트 용도.
+ * listAdminDeals({pageSize:1})로 카운트를 얻는 기존 패턴은 COUNT 외에
+ * LIMIT 1 SELECT + attachImages까지 실행시켜 낭비다. 이 함수는 COUNT
+ * 쿼리 1개만 실행한다.
+ */
+export function countAdminDeals(
+  options: AdminListOptions = {},
+  dbPath: string = DEFAULT_DB_PATH,
+): number {
+  const db = openDbReadOnly(dbPath);
+  if (!db) return 0;
+
+  try {
+    const { whereSql, params } = buildAdminWhere(options);
+
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n
+         FROM deals d JOIN posts p ON p.id = d.post_rowid
+         ${whereSql}`,
+      )
+      .get(...params) as { n: number };
+
+    return row.n;
+  } finally {
+    db.close();
+  }
+}
+
 export function listAdminDeals(
   options: AdminListOptions = {},
   dbPath: string = DEFAULT_DB_PATH,
@@ -139,58 +234,7 @@ export function listAdminDeals(
   if (!db) return { rows: [], total: 0, page: 1, pageSize: 50 };
 
   try {
-    const where: string[] = [];
-    const params: (string | number)[] = [];
-
-    if (!options.includeHidden) {
-      where.push("d.hidden = 0 AND p.hidden = 0");
-    }
-
-    if (options.excludedOnly) {
-      /* 복원 시 excluded_reason이 지워지므로 복원 마커도 포함해야
-         복원 철회(재제외) 입구가 사라지지 않는다. */
-      where.push("(d.excluded_reason IS NOT NULL OR d.exclusion_restored = 1)");
-    }
-
-    if (options.overriddenOnly) {
-      where.push(
-        `(d.name_override IS NOT NULL OR d.price_override IS NOT NULL
-          OR d.category_override IS NOT NULL OR d.store_override IS NOT NULL
-          OR d.url_override IS NOT NULL)`,
-      );
-    }
-
-    if (options.uncategorizedOnly) {
-      where.push(
-        `COALESCE(d.category_override, d.category) IS NULL
-         AND d.excluded_reason IS NULL`,
-      );
-    }
-
-    if (options.status === "active") {
-      where.push(`COALESCE(p.status_override, p.status) != 'ended'`);
-    } else if (options.status === "ended") {
-      where.push(`COALESCE(p.status_override, p.status) = 'ended'`);
-    }
-
-    if (options.community) {
-      where.push("p.community = ?");
-      params.push(options.community);
-    }
-
-    if (options.q) {
-      const needle = options.q.trim();
-
-      if (needle.length > 0) {
-        where.push(
-          `(COALESCE(d.name_override, d.product_name) LIKE ?
-            OR p.title LIKE ?)`,
-        );
-        params.push(`%${needle}%`, `%${needle}%`);
-      }
-    }
-
-    const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const { whereSql, params } = buildAdminWhere(options);
 
     const totalRow = db
       .prepare(`SELECT COUNT(*) AS n FROM deals d JOIN posts p ON p.id = d.post_rowid ${whereSql}`)
@@ -320,8 +364,9 @@ function matchesStatus(
 export function countThumbnails(
   status: ThumbnailStatusFilter = "all",
   dbPath: string = DEFAULT_DB_PATH,
+  prebuilt?: AdminThumbnailRow[],
 ): Record<ThumbnailView, number> {
-  const all = buildThumbnailRows(dbPath).filter((r) =>
+  const all = (prebuilt ?? buildThumbnailRows(dbPath)).filter((r) =>
     matchesStatus(r, status),
   );
 
@@ -336,17 +381,21 @@ export function countThumbnails(
 /**
  * 썸네일 관리 목록 — 구매링크 있는 딜을 상품 키 단위로 묶어
  * 캐시 상태와 함께 보여준다. 최신 딜 순. 상태 필터·페이지네이션.
+ * prebuilt를 넘기면 buildThumbnailRows를 재실행하지 않고 그 배열을
+ * 사용한다 — 한 페이지 렌더에서 countThumbnails와 listThumbnails가
+ * 같은 raw rows를 공유해 D1 row-read를 절반으로 줄인다.
  */
 export function listThumbnails(
   options: ThumbnailListOptions = {},
   dbPath: string = DEFAULT_DB_PATH,
+  prebuilt?: AdminThumbnailRow[],
 ): { rows: AdminThumbnailRow[]; total: number; page: number; pageSize: number } {
   const view = options.view ?? "all";
   const status = options.status ?? "all";
   const pageSize = options.pageSize ?? 50;
   const page = Math.max(1, options.page ?? 1);
 
-  const filtered = buildThumbnailRows(dbPath).filter(
+  const filtered = (prebuilt ?? buildThumbnailRows(dbPath)).filter(
     (r) => matchesView(r, view) && matchesStatus(r, status),
   );
 
@@ -358,8 +407,13 @@ export function listThumbnails(
   };
 }
 
-/** 구매링크 있는 딜을 상품 키 단위로 묶어 캐시를 붙인다 (최신 순). */
-function buildThumbnailRows(dbPath: string): AdminThumbnailRow[] {
+/**
+ * 구매링크 있는 딜을 상품 키 단위로 묶어 캐시를 붙인다 (최신 순).
+ * 2026-09-08: /admin/thumbnails가 countThumbnails+listThumbnails 양쪽에서
+ * 이 함수를 각각 호출해 D1 row-read가 2배로 소모됐다. export로 전환해
+ * 페이지가 한 번만 호출하고 결과를 양쪽에 prebuilt로 넘기도록 한다.
+ */
+export function buildThumbnailRows(dbPath: string = DEFAULT_DB_PATH): AdminThumbnailRow[] {
   const db = openDbReadOnly(dbPath);
   if (!db) return [];
 

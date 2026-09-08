@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { countThumbnails, listThumbnails } from "@/src/db/admin-queries";
+import {
+  countThumbnails,
+  listThumbnails,
+} from "@/src/db/admin-queries";
+import { getCachedThumbnailRows } from "@/src/db/admin-cached";
 import { ThumbnailActions } from "@/components/admin/thumbnail-actions";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
@@ -35,9 +39,21 @@ export default async function AdminThumbnailsPage({ searchParams }: PageProps) {
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const page = Number(firstParam(sp.page)) || 1;
 
-  /* 탭 카운트는 현재 딜 상태 필터 기준 — 선별 후 규모가 보이도록. */
-  const counts = countThumbnails(status);
-  const result = listThumbnails({ view, status, page, pageSize: PAGE_SIZE });
+  /*
+   * 2026-09-08: buildThumbnailRows 1회 호출로 통합 + 캐시 래퍼 경유.
+   * 기존에는 countThumbnails와 listThumbnails가 각각 내부에서
+   * buildThumbnailRows를 호출해 D1 row-read가 2배로 소모됐다.
+   * getCachedThumbnailRows는 캐시 키가 유일해 페이지네이션·탭 전환이
+   * 모두 같은 엔트리를 공유하고, DEALS_CACHE_TAG로 어드민 쓰기 시
+   * 즉시 무효화된다.
+   */
+  const rawRows = await getCachedThumbnailRows();
+  const counts = countThumbnails(status, undefined, rawRows);
+  const result = listThumbnails(
+    { view, status, page, pageSize: PAGE_SIZE },
+    undefined,
+    rawRows,
+  );
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
 
   const current: Record<string, string> = {};

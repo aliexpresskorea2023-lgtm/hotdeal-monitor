@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listAdminDeals } from "@/src/db/admin-queries";
+import { getCachedAdminDealList } from "@/src/db/admin-cached";
 import { CATEGORIES, COMMUNITIES, STORE_FILTERS } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
@@ -31,7 +31,7 @@ export default async function AdminDealsPage({ searchParams }: PageProps) {
 
   const flags = new Set((current.f ?? "").split(",").filter(Boolean));
 
-  const result = listAdminDeals({
+  const result = await getCachedAdminDealList({
     q: current.q ?? null,
     status:
       current.status === "active" || current.status === "ended"
