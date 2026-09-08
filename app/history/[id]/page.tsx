@@ -1,6 +1,7 @@
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getPriceHistory, type PricePoint } from "@/src/db/history";
+import { getCachedPriceHistory } from "@/src/db/cached";
+import type { PricePoint } from "@/src/db/history";
 import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, type Community } from "@/src/db/taxonomy";
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatNumber, formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
@@ -105,7 +106,14 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
     : "3m";
   const rangeDef = RANGES.find((r) => r.key === range)!;
 
-  const { items } = getPriceHistory({ limit: 1000 });
+  /*
+   * 2026-09-08: 캐시 래퍼 경유로 전환. 이 페이지가 getPriceHistory를 직접
+   * 호출하던 시절에는 force-dynamic + searchParams라 히트마다 ~30k행이
+   * 소모되어 하루 165회 요청만으로 D1 5M 한도를 터뜨렸다. /history 목록
+   * 페이지(기본 정렬)와 동일한 {limit:1000, sort:"latest"} 키를 공유해
+   * TTL(30분)당 1회만 D1을 읽는다.
+   */
+  const { items } = await getCachedPriceHistory({ limit: 1000, sort: "latest" });
   const item = items.find((i) => i.dealId === dealId);
   if (!item) notFound();
 

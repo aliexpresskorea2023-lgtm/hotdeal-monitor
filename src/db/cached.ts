@@ -36,8 +36,13 @@ export const DEALS_CACHE_TAG = "deals";
 /** 메인 피드 TTL(초). 필터 조합당 이 주기마다 D1을 1회 읽는다. */
 export const FEED_REVALIDATE = 120;
 
-/** 최저가 히스토리 TTL(초). 값 변화가 드물어 피드보다 길게 잡는다. */
-export const HISTORY_REVALIDATE = 300;
+/**
+ * 최저가 히스토리 TTL(초). 값 변화가 드물어 피드보다 길게 잡는다.
+ * 2026-09-08 300→1800 상향: /history/[id]가 무캐시로 호출되어 D1 row-read
+ * 5M 한도를 반복 소진(09-04, 09-08 장애). 수집 주기(2시간) 대비 30분 TTL은
+ * 여전히 충분히 신선하고, 하루 빌드 횟수를 288→48로 1/6 줄인다.
+ */
+export const HISTORY_REVALIDATE = 1800;
 
 /** getDealFeed 캐싱 래퍼 — 공개 피드/랭킹용. */
 export const getCachedDealFeed = unstable_cache(
