@@ -1,5 +1,5 @@
 import { Eye, MessageCircle } from "lucide-react";
-import { type ItemView } from "@/src/db/queries";
+import { type ItemView, filterAndSortFeed } from "@/src/db/queries";
 import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
@@ -230,9 +230,6 @@ export default async function Home({ searchParams }: PageProps) {
   const rawQ = firstParam(raw.q)?.trim() || null;
   const rawPage = Number.parseInt(firstParam(raw.page) ?? "1", 10);
 
-  /* 전체 규모 표시용 전체 피드. 스토어 칩은 고정 목록. */
-  const all = await getCachedDealFeed({});
-
   const category: NormCategory | null = (CATEGORIES as readonly string[]).includes(
     rawCat ?? "",
   )
@@ -253,7 +250,20 @@ export default async function Home({ searchParams }: PageProps) {
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const sort = rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
 
-  const { items, hasData, lastIngestedAt } = await getCachedDealFeed({
+  /*
+   * 2026-09-08: 캐시 호출 1회로 통합. 기존에는 (a) 죽은 코드
+   * `getCachedDealFeed({})`와 (b) 필터+q 포함 호출 2개를 각각
+   * 실행했고, (b)의 캐시 키에 자유 텍스트 q가 들어가 키 공간이
+   * 무한대로 갈라졌다 — TTL 120초 기준 키당 하루 최대 720회
+   * 재구축이 가능해 D1 row-read 5M 한도를 반복 소진했다.
+   * 새 방식은 무필터 raw feed 1건을 캐시에서 받고, 필터·정렬·q는
+   * 전부 페이지 안에서 in-memory로 적용한다. 캐시 키는 유일해지고
+   * 홈/ranking/히스토리 상세가 모두 같은 엔트리를 공유한다.
+   */
+  const { items: allItems, hasData, lastIngestedAt } =
+    await getCachedDealFeed({});
+
+  const items = filterAndSortFeed(allItems, {
     category,
     store,
     community,

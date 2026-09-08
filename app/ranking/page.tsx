@@ -1,4 +1,4 @@
-import { hotScore, itemAgeMs, type ItemView } from "@/src/db/queries";
+import { hotScore, itemAgeMs, filterAndSortFeed, type ItemView } from "@/src/db/queries";
 import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
@@ -101,7 +101,13 @@ export default async function RankingPage({ searchParams }: PageProps) {
       ? rawCommunity
       : null;
 
-  const { items, hasData } = await getCachedDealFeed({ category, store, community });
+  /*
+   * 2026-09-08: 홈과 동일한 무필터 캐시 엔트리 공유.
+   * ranking은 hotScore 기반 자체 정렬과 24시간 나이 컷을 쓰므로
+   * filterAndSortFeed에는 category/store/community만 넘긴다.
+   */
+  const { items: allItems, hasData } = await getCachedDealFeed({});
+  const items = filterAndSortFeed(allItems, { category, store, community });
 
   const nowMs = Date.now();
   const ranked = [...items]

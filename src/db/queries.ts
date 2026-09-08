@@ -791,82 +791,110 @@ export function getDealFeed(
       }
     }
 
-    if (options.q) {
-      const needle = options.q.trim().toLowerCase();
-
-      if (needle.length > 0) {
-        items = items.filter((i) => {
-          if (i.name && i.name.toLowerCase().includes(needle)) return true;
-
-          return i.sources.some((s) =>
-            s.title.toLowerCase().includes(needle),
-          );
-        });
-      }
-    }
-
-    if (options.category) {
-      items = items.filter((i) => i.categoryNorm === options.category);
-    }
-
-    if (options.store) {
-      /*
-       * "기타"는 고정 스토어 목록 밖 전부(스토어 미상 포함)를
-       * 묶는 캐치올 필터다. 나머지는 정확 매칭.
-       */
-      items =
-        options.store === OTHER_STORE_FILTER
-          ? items.filter((i) => isOtherStore(i.storeNorm))
-          : items.filter((i) => i.storeNorm === options.store);
-    }
-
-    if (options.community) {
-      /* 출처 중 하나라도 해당 커뮤니티에서 온 아이템만. */
-      const com = options.community;
-      items = items.filter((i) => i.sources.some((s) => s.source === com));
-    }
-
-    if (options.status === "active") {
-      items = items.filter((i) => i.status !== "ended");
-    } else if (options.status === "ended") {
-      items = items.filter((i) => i.status === "ended");
-    }
-
-    const sort = options.sort ?? "latest";
-
-    /*
-     * 작성 시각 기준: 원문 posted_at, 없으면 첫 적재 시각.
-     * 수집 확인 시각(last_seen_at)은 쓰지 않는다 — 백필된 과거 글이
-     * 적재 직후 "최신"으로 떠오르는 오염을 막는다.
-     */
-    const postedBasis = (i: ItemView) =>
-      i.postedAt ?? i.firstSource.firstSeenAt;
-
-    items.sort((a, b) => {
-      /* 종료는 어떤 정렬에서도 맨 아래. */
-      const endedDiff =
-        (a.status === "ended" ? 1 : 0) - (b.status === "ended" ? 1 : 0);
-      if (endedDiff !== 0) return endedDiff;
-
-      if (sort === "hot") {
-        const diff = hotScore(b) - hotScore(a);
-        if (diff !== 0) return diff;
-      } else if (sort === "price") {
-        /* 원화 환산 기준 오름차순. 가격 없는 아이템은 맨 뒤. */
-        const diff = priceKrwOf(a) - priceKrwOf(b);
-        if (diff !== 0) return diff;
-      }
-
-      return (
-        postedBasis(b).localeCompare(postedBasis(a)) ||
-        a.key.localeCompare(b.key)
-      );
-    });
-
-    return { items, hasData: true, lastIngestedAt: lastIngest(db) };
+    return {
+      items: filterAndSortFeed(items, options),
+      hasData: true,
+      lastIngestedAt: lastIngest(db),
+    };
   } finally {
     db.close();
   }
+}
+
+/*
+ * getDealFeed의 in-memory 필터+정렬 단계를 분리한 헬퍼 (2026-09-08).
+ *
+ * 분리 이유: D1 row-read 절감. 필터·정렬·q는 전부 메모리 연산이라
+ * SQL 결과에 의존하지 않는다. 페이지 컴포넌트가 캐시된 raw items
+ * (무필터)를 받아 이 함수로 직접 필터링하면, unstable_cache의 캐시
+ * 키가 (category × store × community × status × sort × q) 조합과
+ * 무관해져 하루 D1 빌드 횟수가 TTL당 1회로 고정된다. 특히 자유
+ * 텍스트 q가 키 공간에 포함되면 캐시가 사실상 무한대로 갈라져
+ * TTL 120초 기준 키당 하루 최대 720회 재구축이 가능했던 문제를
+ * 근본적으로 차단한다.
+ *
+ * 입력 items 배열을 파괴하지 않고 새 배열을 반환한다 — 캐시된
+ * 결과를 여러 페이지가 공유하므로 in-place sort는 금물.
+ */
+export function filterAndSortFeed(
+  items: ItemView[],
+  options: FeedOptions = {},
+): ItemView[] {
+  let out = items.slice();
+
+  if (options.q) {
+    const needle = options.q.trim().toLowerCase();
+
+    if (needle.length > 0) {
+      out = out.filter((i) => {
+        if (i.name && i.name.toLowerCase().includes(needle)) return true;
+
+        return i.sources.some((s) =>
+          s.title.toLowerCase().includes(needle),
+        );
+      });
+    }
+  }
+
+  if (options.category) {
+    out = out.filter((i) => i.categoryNorm === options.category);
+  }
+
+  if (options.store) {
+    /*
+     * "기타"는 고정 스토어 목록 밖 전부(스토어 미상 포함)를
+     * 묶는 캐치올 필터다. 나머지는 정확 매칭.
+     */
+    out =
+      options.store === OTHER_STORE_FILTER
+        ? out.filter((i) => isOtherStore(i.storeNorm))
+        : out.filter((i) => i.storeNorm === options.store);
+  }
+
+  if (options.community) {
+    /* 출처 중 하나라도 해당 커뮤니티에서 온 아이템만. */
+    const com = options.community;
+    out = out.filter((i) => i.sources.some((s) => s.source === com));
+  }
+
+  if (options.status === "active") {
+    out = out.filter((i) => i.status !== "ended");
+  } else if (options.status === "ended") {
+    out = out.filter((i) => i.status === "ended");
+  }
+
+  const sort = options.sort ?? "latest";
+
+  /*
+   * 작성 시각 기준: 원문 posted_at, 없으면 첫 적재 시각.
+   * 수집 확인 시각(last_seen_at)은 쓰지 않는다 — 백필된 과거 글이
+   * 적재 직후 "최신"으로 떠오르는 오염을 막는다.
+   */
+  const postedBasis = (i: ItemView) =>
+    i.postedAt ?? i.firstSource.firstSeenAt;
+
+  out.sort((a, b) => {
+    /* 종료는 어떤 정렬에서도 맨 아래. */
+    const endedDiff =
+      (a.status === "ended" ? 1 : 0) - (b.status === "ended" ? 1 : 0);
+    if (endedDiff !== 0) return endedDiff;
+
+    if (sort === "hot") {
+      const diff = hotScore(b) - hotScore(a);
+      if (diff !== 0) return diff;
+    } else if (sort === "price") {
+      /* 원화 환산 기준 오름차순. 가격 없는 아이템은 맨 뒤. */
+      const diff = priceKrwOf(a) - priceKrwOf(b);
+      if (diff !== 0) return diff;
+    }
+
+    return (
+      postedBasis(b).localeCompare(postedBasis(a)) ||
+      a.key.localeCompare(b.key)
+    );
+  });
+
+  return out;
 }
 
 function lastIngest(db: Db): string | null {

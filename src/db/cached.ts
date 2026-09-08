@@ -33,8 +33,16 @@ import {
 /** 어드민 쓰기 시 무효화할 캐시 태그. */
 export const DEALS_CACHE_TAG = "deals";
 
-/** 메인 피드 TTL(초). 필터 조합당 이 주기마다 D1을 1회 읽는다. */
-export const FEED_REVALIDATE = 120;
+/**
+ * 메인 피드 TTL(초).
+ * 2026-09-08 120→900 상향 + 캐시 키 단일화: 홈/ranking/히스토리 상세가
+ * 모두 `getCachedDealFeed({})`(무필터)를 부르고 페이지 안에서
+ * `filterAndSortFeed`로 필터·정렬·q를 적용한다. 캐시 키가 유일해져
+ * TTL당 D1 빌드 1회로 고정 — 기존처럼 자유 텍스트 q가 키에 포함될 때
+ * 발생하던 "키당 하루 720회 재구축" 문제가 원천 차단된다. 수집
+ * 주기(2시간) 대비 15분 TTL은 여전히 충분히 신선하다.
+ */
+export const FEED_REVALIDATE = 900;
 
 /**
  * 최저가 히스토리 TTL(초). 값 변화가 드물어 피드보다 길게 잡는다.
