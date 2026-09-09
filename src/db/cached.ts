@@ -35,22 +35,21 @@ export const DEALS_CACHE_TAG = "deals";
 
 /**
  * 메인 피드 TTL(초).
- * 2026-09-08 120→900 상향 + 캐시 키 단일화: 홈/ranking/히스토리 상세가
- * 모두 `getCachedDealFeed({})`(무필터)를 부르고 페이지 안에서
- * `filterAndSortFeed`로 필터·정렬·q를 적용한다. 캐시 키가 유일해져
- * TTL당 D1 빌드 1회로 고정 — 기존처럼 자유 텍스트 q가 키에 포함될 때
- * 발생하던 "키당 하루 720회 재구축" 문제가 원천 차단된다. 수집
- * 주기(2시간) 대비 15분 TTL은 여전히 충분히 신선하다.
+ * 2026-09-09 900→3600 상향: 수집 파이프라인 주기(2시간) 대비 1시간 TTL은
+ * 실질 체감 지연이 없고, 하루 D1 빌드를 24회(×19k행=456k)로 고정해
+ * 무료 티어 5M 한도의 9%만 사용한다. 캐시 키는 유일(무필터)하므로
+ * 트래픽 증가와 무관하게 소비량이 일정하다.
  */
-export const FEED_REVALIDATE = 900;
+export const FEED_REVALIDATE = 3600;
 
 /**
- * 최저가 히스토리 TTL(초). 값 변화가 드물어 피드보다 길게 잡는다.
- * 2026-09-08 300→1800 상향: /history/[id]가 무캐시로 호출되어 D1 row-read
- * 5M 한도를 반복 소진(09-04, 09-08 장애). 수집 주기(2시간) 대비 30분 TTL은
- * 여전히 충분히 신선하고, 하루 빌드 횟수를 288→48로 1/6 줄인다.
+ * 최저가 히스토리 TTL(초).
+ * 2026-09-09 1800→3600 상향: 피드와 동일하게 1시간. sort 키 2개
+ * (latest/drop) × 하루 24회 × 35k행 = 1.7M — 피드와 합산해도
+ * 2.2M으로 D1 무료 5M 한도의 44%. 가격 관측은 2시간 주기로
+ * 추가되므로 1시간 TTL이면 체감 지연이 거의 없다.
  */
-export const HISTORY_REVALIDATE = 1800;
+export const HISTORY_REVALIDATE = 3600;
 
 /** getDealFeed 캐싱 래퍼 — 공개 피드/랭킹용. */
 export const getCachedDealFeed = unstable_cache(
