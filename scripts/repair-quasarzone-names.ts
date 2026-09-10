@@ -153,11 +153,9 @@ function main(): void {
   const db: Db = openDb(dbPath);
 
   /*
-   * openDb는 busy_timeout을 두지 않아(node:sqlite 기본 0) 개발 서버가
-   * WAL을 잡고 있으면 쓰기가 곧바로 "database is locked"로 실패한다.
-   * 경합 시 최대 10초 기다리게 한다.
+   * busy_timeout은 openDb() sqlite 분기에서 자동 적용(2026-09-10 이관).
+   * D1 백엔드는 PRAGMA를 SQLITE_AUTH로 거부하므로 여기서 따로 걸지 않는다.
    */
-  db.exec("PRAGMA busy_timeout = 10000;");
 
   const index = buildSnapshotIndex();
 

@@ -289,10 +289,8 @@ async function main() {
   }
 
   const db = DRY_RUN ? null : openDb();
-  if (db) {
-    // node:sqlite 쓰기 경합 대비 (dev 서버와 동시 접근 가능)
-    db.exec("PRAGMA busy_timeout = 10000;");
-  }
+  // busy_timeout은 openDb() sqlite 분기에서 자동 적용.
+  // D1 백엔드는 PRAGMA를 SQLITE_AUTH로 거부하므로 여기서 따로 걸지 않는다.
 
   const now = nowKstIso();
   let totalPosts = 0;

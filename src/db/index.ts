@@ -44,6 +44,9 @@ export function openDb(dbPath: string = DEFAULT_DB_PATH): Db {
 
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
+  // dev 서버/worker 간 WAL 잠금 경합 시 "database is locked"(errcode 5) 방지.
+  // D1 백엔드는 이 PRAGMA를 SQLITE_AUTH로 거부하므로 sqlite 경로에서만 적용.
+  db.exec("PRAGMA busy_timeout = 10000;");
 
   const schema = fs.readFileSync(
     path.join(process.cwd(), "src", "db", "schema.sql"),

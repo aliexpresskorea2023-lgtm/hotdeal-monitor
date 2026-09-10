@@ -28,8 +28,7 @@ if (!db) {
   process.exit(1);
 }
 
-/* dev 서버·워커와 WAL 경합 시 즉시 실패 방지. */
-db.exec("PRAGMA busy_timeout = 10000;");
+/* busy_timeout은 openDb() sqlite 분기에서 자동 적용(2026-09-10). */
 
 interface MultiPostRow {
   post_rowid: number;
