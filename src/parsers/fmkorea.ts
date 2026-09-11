@@ -734,11 +734,24 @@ function splitNumberedProductSections(
   );
 }
 
+/*
+ * 본문 섹션에서 URL 토큰을 공백으로 치환한다.
+ *
+ * 가격·상품명 추출은 URL 내부 숫자에 반응하면 안 된다.
+ * 실제 사례(2026-09-11, 10321755206): 지마켓 상품 링크의
+ * `goodscode=4740761396` 숫자가 가격 정규식의 `=` 분기에 걸려
+ * 47억 원짜리 키보드가 적재됐다. 상품 링크는 extractFirstUrl이
+ * 따로 챙기므로 여기서 URL을 지워도 정보 손실은 없다.
+ */
+function stripUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/gi, " ");
+}
+
 function extractProductNameFromSection(
   section: string,
 ): string | null {
   const lines =
-    section
+    stripUrls(section)
       .split("\n")
       .map((line) =>
         cleanText(line),
@@ -774,8 +787,11 @@ function extractProductNameFromSection(
 function extractProductPriceText(
   section: string,
 ): string | null {
+  // URL 내부 숫자(goodscode=, products/ 등)가 가격으로 읽히지 않게 제거.
+  const text = stripUrls(section);
+
   const patterns = [
-    /(?:=|가격\s*:?)\s*([$€£¥₩]?\s?[\d,]+(?:\.\d+)?\s*(?:원|USD|KRW|JPY|CNY|EUR)?)/i,
+    /가격\s*[:=]?\s*([$€£¥₩]?\s?[\d,]+(?:\.\d+)?\s*(?:원|USD|KRW|JPY|CNY|EUR)?)/i,
 
     /([$€£¥₩]\s?[\d,]+(?:\.\d+)?)/i,
 
@@ -784,7 +800,7 @@ function extractProductPriceText(
 
   for (const pattern of patterns) {
     const match =
-      section.match(pattern);
+      text.match(pattern);
 
     if (match?.[1]) {
       return cleanText(
