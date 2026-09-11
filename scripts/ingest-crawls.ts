@@ -6,6 +6,7 @@ import { parsePpomppuHtml } from "../src/parsers/ppomppu";
 import { parseRuliwebHtml } from "../src/parsers/ruliweb";
 import { parseQuasarzoneHtml } from "../src/parsers/quasarzone";
 import { parseArcaHtml } from "../src/parsers/arca";
+import { extractBodyImage } from "../src/parsers/body-image";
 import {
   normalizeArcaDeal,
   normalizeFmkoreaDeal,
@@ -147,6 +148,8 @@ function upsertPost(
   snapshotPath: string,
   /** 제외 규칙 적용 후 실제로 적재한 상품 수 (워커 동결 기준). */
   productsCount: number,
+  /** 본문 삽입 대표 이미지 URL (추출 실패 시 null). */
+  bodyImageUrl: string | null,
 ): number {
   const now = nowKstIso();
   const affiliate = affiliateOf(post);
@@ -156,8 +159,8 @@ function upsertPost(
        community, post_id, url, title, posted_at, status,
        views, recommendations, comments,
        affiliate_enabled, affiliate_raw_url, products_count,
-       first_seen_at, last_seen_at, snapshot_path
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       first_seen_at, last_seen_at, snapshot_path, body_image_url
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(community, post_id) DO UPDATE SET
        url = excluded.url,
        title = COALESCE(NULLIF(excluded.title, ''), posts.title),
@@ -170,7 +173,8 @@ function upsertPost(
        affiliate_raw_url = excluded.affiliate_raw_url,
        products_count = excluded.products_count,
        last_seen_at = excluded.last_seen_at,
-       snapshot_path = excluded.snapshot_path`,
+       snapshot_path = excluded.snapshot_path,
+       body_image_url = COALESCE(excluded.body_image_url, posts.body_image_url)`,
   ).run(
     community,
     entry.postId,
@@ -187,6 +191,7 @@ function upsertPost(
     now,
     now,
     snapshotPath,
+    bodyImageUrl,
   );
 
   const row = db
@@ -410,6 +415,11 @@ function ingestRun(db: Db, runDir: string): RunSummary {
 
     const snapshotPath = `${manifest.runId}/${entry.snapshot}`;
 
+    /* 본문 삽입 대표 이미지 (썸네일 2순위 폴백). 실패 시 null. */
+    const bodyImageUrl = extractBodyImage(entry.community, html, {
+      baseUrl: entry.url,
+    });
+
     /* products_count는 딜 처리 후 실제 노출 수로 확정한다. */
     const postRowid = upsertPost(
       db,
@@ -418,6 +428,7 @@ function ingestRun(db: Db, runDir: string): RunSummary {
       post,
       snapshotPath,
       0,
+      bodyImageUrl,
     );
 
     summary.snapshots += 1;

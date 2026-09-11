@@ -3,6 +3,7 @@ import { type ItemView, filterAndSortFeed } from "@/src/db/queries";
 import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
+import { DealThumb } from "@/components/deal-thumb";
 import {
   CATEGORIES,
   COMMUNITIES,
@@ -55,7 +56,7 @@ function storeLogo(storeNorm: string | null): string {
   return STORE_FILTER_LOGOS[OTHER_STORE_FILTER];
 }
 
-/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 2순위. */
+/** 원문 커뮤니티 로고 — 상품 이미지 폴백 체인의 3순위 (썸네일→본문이미지 다음). */
 function communityLogo(source: string): string | null {
   return (COMMUNITIES as readonly string[]).includes(source)
     ? COMMUNITY_LOGOS[source as Community]
@@ -111,12 +112,13 @@ function DealRow({
       className={item.status === "ended" ? "deal-row ended" : "deal-row"}
     >
       <div className="thumb">
-        <img
-          src={
-            item.imageUrl ??
-            communityLogo(item.firstSource.source) ??
-            logo
-          }
+        <DealThumb
+          candidates={[
+            item.imageUrl,
+            item.bodyImageUrl,
+            communityLogo(item.firstSource.source),
+            logo,
+          ]}
           alt={item.storeNorm}
         />
       </div>

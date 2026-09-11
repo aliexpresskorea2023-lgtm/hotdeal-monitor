@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS posts (
   last_seen_at TEXT NOT NULL,
   -- 마지막 적재 시 스냅샷의 run 내 상대 경로 (가지치기되면 null 가능).
   snapshot_path TEXT,
+  -- 게시글 본문 삽입 대표 이미지 URL (2026-09-11).
+  -- 상품 썸네일(product_images)을 못 구한 딜의 2순위 폴백.
+  -- 핫링크 차단 커뮤니티(arca·quasarzone)는 R2 재호스팅 URL로 대체될 수 있음.
+  body_image_url TEXT,
   -- 어드민 수동 상태 지정(진행중/종료 고정). 노출 시 수집기 상태보다 우선.
   -- 해제하면 NULL → 수집기 판정 복귀.
   status_override TEXT

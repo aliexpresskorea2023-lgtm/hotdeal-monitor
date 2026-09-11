@@ -7,6 +7,7 @@ import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, t
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
 import { PriceSpark } from "@/components/price-spark";
+import { DealThumb } from "@/components/deal-thumb";
 
 /*
  * 최저가 히스토리 목록 — price_observations 시계열에서
@@ -109,12 +110,13 @@ export default async function HistoryPage({ searchParams }: PageProps) {
               <div className="deal-row hist-row" key={item.dealId}>
                 <Link className="hist-main" href={`/history/${item.dealId}`}>
                   <div className="thumb">
-                    <img
-                      src={
-                        item.imageUrl ??
-                        communityLogo(item.community) ??
-                        logo
-                      }
+                    <DealThumb
+                      candidates={[
+                        item.imageUrl,
+                        item.bodyImageUrl,
+                        communityLogo(item.community),
+                        logo,
+                      ]}
                       alt={item.storeNorm}
                     />
                   </div>

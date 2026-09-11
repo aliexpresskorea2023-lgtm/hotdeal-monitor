@@ -69,6 +69,12 @@ export interface ItemSourceView {
   firstSeenAt: string;
   /** 이 게시글의 마지막 적재(갱신) 시각 */
   collectedAt: string;
+  /**
+   * 본문 삽입 대표 이미지 (posts.body_image_url).
+   * 상품 썸네일(imageUrl)을 못 구했을 때의 2순위 폴백. 없으면 null.
+   * 핫링크 차단 커뮤니티는 표시 계층에서 no-referrer + onError로 방어.
+   */
+  bodyImageUrl: string | null;
   stats: {
     views: number | null;
     recommendations: number | null;
@@ -133,6 +139,11 @@ export interface ItemView {
    * 없으면 표시 계층에서 원문 커뮤니티 로고 → 스토어 로고로 폴백.
    */
   imageUrl: string | null;
+  /**
+   * 본문 삽입 대표 이미지 (posts.body_image_url).
+   * 상품 썸네일(imageUrl)을 못 구했을 때의 2순위 폴백. 없으면 null.
+   */
+  bodyImageUrl: string | null;
 }
 
 export interface FeedResult {
@@ -157,6 +168,8 @@ interface PostRow {
   affiliate_raw_url: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  /** 본문 삽입 대표 이미지 (posts.body_image_url). */
+  body_image_url: string | null;
   /** 어드민 수동 상태 지정 (없으면 수집기 판정). */
   status_override: string | null;
   hidden: number;
@@ -388,6 +401,7 @@ function makeSource(member: Member): ItemSourceView {
     postedAt: post.posted_at,
     firstSeenAt: post.first_seen_at,
     collectedAt: post.last_seen_at,
+    bodyImageUrl: post.body_image_url ?? null,
     stats: {
       views: post.views,
       recommendations: post.recommendations,
@@ -561,6 +575,10 @@ function buildItem(key: string, members: Member[]): ItemView {
     firstSource,
     sources,
     imageUrl: null,
+    bodyImageUrl:
+      firstSource.bodyImageUrl ??
+      sources.find((s) => s.bodyImageUrl)?.bodyImageUrl ??
+      null,
   };
 }
 
@@ -657,7 +675,7 @@ export function getDealFeed(
         `SELECT id AS rowid, community, post_id, url, title, posted_at,
                 status, views, recommendations, comments,
                 affiliate_enabled, affiliate_raw_url,
-                first_seen_at, last_seen_at,
+                first_seen_at, last_seen_at, body_image_url,
                 status_override, hidden
          FROM posts
          WHERE hidden = 0

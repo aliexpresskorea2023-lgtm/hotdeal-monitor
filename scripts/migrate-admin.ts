@@ -33,6 +33,10 @@ const POST_COLUMNS: Array<{ name: string; ddl: string }> = [
     ddl: "ALTER TABLE posts ADD COLUMN status_override TEXT",
   },
   { name: "hidden", ddl: "ALTER TABLE posts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0" },
+  {
+    name: "body_image_url",
+    ddl: "ALTER TABLE posts ADD COLUMN body_image_url TEXT",
+  },
 ];
 
 const IMAGE_COLUMNS: Array<{ name: string; ddl: string }> = [

@@ -51,6 +51,8 @@ export interface HistoryItem {
   currency: string;
   /** 상품 썸네일 (product_images 캐시, 피드와 동일 키 합성). */
   imageUrl: string | null;
+  /** 본문 삽입 대표 이미지 — 상품 썸네일 없을 때의 2순위 폴백. */
+  bodyImageUrl: string | null;
   /** 최신 관측 가격 */
   currentPrice: number | null;
   /** 관측 이력 중 최저가 */
@@ -114,6 +116,7 @@ interface DealJoinRow {
   last_seen_at: string;
   posted_at: string | null;
   first_seen_at: string;
+  body_image_url: string | null;
 }
 
 function toStatus(raw: string): PostStatus {
@@ -186,7 +189,7 @@ export function getPriceHistory(
                 d.excluded_reason, d.exclusion_restored,
                 p.community, p.title, p.url AS post_url,
                 p.status, p.status_override, p.last_seen_at,
-                p.posted_at, p.first_seen_at
+                p.posted_at, p.first_seen_at, p.body_image_url
          FROM deals d
          JOIN posts p ON p.id = d.post_rowid
          WHERE d.id IN (${placeholders})`,
@@ -316,6 +319,7 @@ export function getPriceHistory(
         status,
         currency: deal.currency,
         imageUrl: null,
+        bodyImageUrl: deal.body_image_url ?? null,
         currentPrice,
         lowestPrice,
         highestPrice,
