@@ -6,6 +6,7 @@ import { OTHER_STORE_FILTER, STORE_FILTER_LOGOS, COMMUNITIES, COMMUNITY_LOGOS, t
 import { firstParam, hrefFor } from "@/src/lib/query";
 import { formatNumber, formatPrice, formatTime, sourceLabel, statusLabel } from "@/src/lib/format";
 import { DealThumb } from "@/components/deal-thumb";
+import { PriceChart } from "@/components/price-chart";
 
 /*
  * 최저가 히스토리 상세 — 관측 시계열 차트 + 기간 필터 + 통계 카드.
@@ -38,54 +39,6 @@ function communityLogo(source: string): string | null {
 
 function valueOf(point: PricePoint): number | null {
   return point.estimatedKrw ?? point.price;
-}
-
-function PriceChart({ points }: { points: PricePoint[] }) {
-  const series = points
-    .map((point) => ({ value: valueOf(point), at: point.observedAt }))
-    .filter((p): p is { value: number; at: string } => p.value !== null);
-
-  if (series.length < 2) {
-    return <div className="empty">구간 내 관측이 2건 미만입니다.</div>;
-  }
-
-  const W = 720;
-  const H = 240;
-  const P = 40;
-
-  const values = series.map((s) => s.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-
-  const coords = series.map((s, i) => ({
-    x: P + (i / (series.length - 1)) * (W - P * 2),
-    y: H - P - ((s.value - min) / span) * (H - P * 2),
-  }));
-
-  const line = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
-  const area = `${P},${H - P} ${line} ${coords[coords.length - 1].x.toFixed(1)},${H - P}`;
-  const last = coords[coords.length - 1];
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="가격 관측 차트">
-      <polygon className="spark-area" points={area} />
-      <polyline className="spark-line" points={line} />
-      <circle className="spark-dot" cx={last.x} cy={last.y} r={4} />
-      <text className="chart-axis" x={P} y={16}>
-        {formatNumber(max)}원
-      </text>
-      <text className="chart-axis" x={P} y={H - P + 18}>
-        {formatNumber(min)}원
-      </text>
-      <text className="chart-axis" x={P} y={H - 8}>
-        {formatTime(series[0].at)}
-      </text>
-      <text className="chart-axis" x={W - P} y={H - 8} textAnchor="end">
-        {formatTime(series[series.length - 1].at)}
-      </text>
-    </svg>
-  );
 }
 
 function pointDate(points: PricePoint[], target: number | null): string | null {
