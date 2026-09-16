@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { adminGate } from "@/src/lib/admin-gate";
 import { DEALS_CACHE_TAG } from "@/src/db/cached";
-import { getMergePreview } from "@/src/db/admin-queries";
+import {
+  getMergePreview,
+  searchMergeDeals,
+  type MergeDealInfo,
+} from "@/src/db/admin-queries";
 import { clearMergeKey, openAdminDb, setMergeKey } from "@/src/db/admin";
 
 /*
@@ -16,6 +20,10 @@ import { clearMergeKey, openAdminDb, setMergeKey } from "@/src/db/admin";
  *       멤버 중 URL 키가 있는 것을 대표 키로 승격해 썸네일이 산다.
  *   { action: "unmerge", dealId: number }
  *       딜 하나의 수동 병합을 해제 — 자연 키(URL/게시글)로 복귀.
+ *   { action: "search", q: string, limit?: number }
+ *       수동 병합 모달의 라이브 검색 — 상품명·게시글 제목 부분 일치
+ *       카드를 MergeDealInfo[] JSON으로 반환(캐시 없이 즉시). 쓰기가
+ *       아니지만 GET 라우트를 숨기려 POST로 받고 adminGate를 지난다.
  *
  * 쓰기는 항상 product_key_override 컬럼에만 — 파서 값은 불변.
  */
@@ -46,6 +54,8 @@ export async function POST(req: Request) {
     dealIds?: unknown;
     canonicalDealId?: unknown;
     dealId?: unknown;
+    q?: unknown;
+    limit?: unknown;
   } | null;
 
   if (!body || typeof body !== "object") {
@@ -53,6 +63,21 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (body.action === "search") {
+      const q = typeof body.q === "string" ? body.q.trim() : "";
+      if (q === "") {
+        return NextResponse.json({ error: "검색어를 입력하세요" }, { status: 400 });
+      }
+
+      const rawLimit = Number(body.limit);
+      const limit = Number.isInteger(rawLimit)
+        ? Math.min(100, Math.max(1, rawLimit))
+        : 50;
+
+      const results: MergeDealInfo[] = searchMergeDeals(q, limit);
+      return NextResponse.json({ ok: true, results, count: results.length });
+    }
+
     if (body.action === "merge") {
       const dealIds = intArray(body.dealIds);
       const canonicalDealId = Number(body.canonicalDealId);

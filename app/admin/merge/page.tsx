@@ -1,5 +1,4 @@
-import { Search } from "lucide-react";
-import { getCachedMergeIndex, getCachedMergeSearch } from "@/src/db/admin-cached";
+import { getCachedMergeIndex } from "@/src/db/admin-cached";
 import { firstParam } from "@/src/lib/query";
 import { MergeBoard } from "@/components/admin/merge-board";
 
@@ -10,8 +9,11 @@ import { MergeBoard } from "@/components/admin/merge-board";
  * 수동으로 묶는다. 묶으면 deals.product_key_override가 대표 키로
  * 통일되어 공개 피드와 최저가 히스토리가 한 카드로 합쳐진다.
  *
- * 서버가 후보·그룹·검색 결과를 읽고, MergeBoard(클라이언트)가
- * 선택/병합/해제를 담당한다. 쓰기는 POST /api/admin/merge.
+ * 두 탭 구성 — "자동 추천"(상품번호 일치 후보 + 수동 그룹/찢기)과
+ * "수동 병합"(상품명 검색 → 카드 → 모달에서 임의 카드 조합). 탭과
+ * 검색어는 ?tab=·?q=로 보존해 히스토리 등에서 딥링크할 수 있다.
+ * 서버는 인덱스(후보·그룹)만 읽고, 선택/병합/해제/라이브 검색은
+ * MergeBoard(클라이언트)가 POST /api/admin/merge 로 담당한다.
  */
 
 export const dynamic = "force-dynamic";
@@ -23,43 +25,27 @@ type PageProps = {
 export default async function AdminMergePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const query = (firstParam(sp.q) ?? "").trim();
+  const rawTab = firstParam(sp.tab);
+  const initialTab = rawTab === "manual" ? "manual" : "recommend";
 
   const index = await getCachedMergeIndex();
-  const manualGroups = index.groups.filter((g) => g.manual);
-  const autoGroupCount = index.groups.length - manualGroups.length;
-
-  const searchResults = query.length > 0 ? await getCachedMergeSearch(query) : null;
+  const manualCount = index.groups.filter((g) => g.manual).length;
 
   return (
     <div>
       <div className="admin-head">
         <h1>카드 병합 관리</h1>
         <span className="admin-count">
-          후보 {index.candidates.length} · 수동 그룹 {manualGroups.length}
+          후보 {index.candidates.length} · 수동 그룹 {manualCount}
         </span>
-      </div>
-
-      <div className="toolbar">
-        <form className="searchbar" action="/admin/merge" method="get" role="search">
-          <Search size={15} />
-          <input
-            type="search"
-            name="q"
-            defaultValue={query}
-            placeholder="상품명·게시글 제목으로 병합할 카드 검색"
-            aria-label="검색"
-          />
-          <button type="submit">검색</button>
-        </form>
       </div>
 
       <MergeBoard
         candidates={index.candidates}
-        manualGroups={manualGroups}
-        autoGroupCount={autoGroupCount}
-        searchResults={searchResults}
-        query={query}
+        groups={index.groups}
         scanned={index.scanned}
+        initialTab={initialTab}
+        initialQuery={query}
       />
     </div>
   );
