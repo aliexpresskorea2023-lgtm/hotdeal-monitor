@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Combine,
@@ -23,8 +24,10 @@ import { sourceLabel, statusLabel } from "@/src/lib/format";
  * "수동 병합"(상품명 검색 → 카드 → 모달에서 임의 카드 조합).
  * 서버가 읽어준 후보·그룹을 받아 선택/병합/해제를 담당하고, 모달의
  * 라이브 검색은 POST /api/admin/merge action:"search"로 즉시 조회한다.
- * 모든 쓰기는 같은 POST 엔드포인트로. 성공 시 서버가 다시 렌더한
- * 페이지로 새로고침 (deal-editor와 동일 패턴).
+ * 모든 쓰기는 같은 POST 엔드포인트로. 자동 추천 탭의 병합·해제는 서버
+ * 렌더 페이지를 새로고침하지만, 수동 병합 탭은 병합 후에도 검색 결과에
+ * 그대로 머문다 — 결과를 제자리에서 재조회하고 router.refresh()로 서버
+ * 데이터만 백그라운드 갱신해, 같은 검색어로 이어서 반복 병합할 수 있게 한다.
  */
 
 type TabKey = "recommend" | "manual";
@@ -58,6 +61,7 @@ function useMergeSearch(initial = "") {
     searched: false,
     error: null,
   });
+  const [reloadToken, setReloadToken] = useState(0);
   const reqId = useRef(0);
   const needle = q.trim();
 
@@ -102,9 +106,15 @@ function useMergeSearch(initial = "") {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [needle]);
+  }, [needle, reloadToken]);
 
-  return { q, setQ, ...state };
+  return {
+    q,
+    setQ,
+    ...state,
+    /** 현재 검색어를 제자리에서 다시 조회 (병합 후 갱신용). */
+    refresh: () => setReloadToken((t) => t + 1),
+  };
 }
 
 function Thumb({ deal }: { deal: MergeDealInfo }) {
@@ -619,18 +629,18 @@ function ManualTab({
   groupsByKey,
   onDone,
   setBusy,
-  onMerged,
 }: {
   initialQuery: string;
   busy: boolean;
   groupsByKey: Map<string, MergeDealInfo[]>;
   onDone: (msg: string, error?: boolean) => void;
   setBusy: (v: boolean) => void;
-  onMerged: () => void;
 }) {
-  const { q, setQ, results, searching, searched, error } =
+  const router = useRouter();
+  const { q, setQ, results, searching, searched, error, refresh } =
     useMergeSearch(initialQuery);
   const [modalBase, setModalBase] = useState<MergeDealInfo | null>(null);
+  const [repOnly, setRepOnly] = useState(false);
 
   /* 검색어를 ?q=로 보존 (딥링크·새로고침 유지). */
   useEffect(() => {
@@ -646,13 +656,39 @@ function ManualTab({
     }
   }, [q]);
 
+  /* 대표상품만 노출 — 같은 유효 키로 묶인 카드는 대표(첫 행) 하나만.
+     검색 결과는 last_seen_at 내림차순이라 첫 행이 최신 = 대표로 적합. */
+  const visibleResults = useMemo(() => {
+    if (!repOnly) return results;
+    const seen = new Set<string>();
+    const out: MergeDealInfo[] = [];
+    for (const r of results) {
+      if (seen.has(r.effectiveKey)) continue;
+      seen.add(r.effectiveKey);
+      out.push(r);
+    }
+    return out;
+  }, [results, repOnly]);
+
+  /*
+   * 병합 성공 후 — 모달만 닫고 검색 결과창에 그대로 머문다.
+   * 결과는 제자리에서 재조회(바뀐 키 반영)하고, 자동 추천 탭의 서버
+   * 데이터는 router.refresh()로 백그라운드 갱신한다. 전체 새로고침이나
+   * 탭 이동이 없으니 검색어를 다시 입력할 필요가 없다.
+   */
+  function handleMerged() {
+    setModalBase(null);
+    refresh();
+    router.refresh();
+  }
+
   return (
     <div>
       <p className="sub" style={{ margin: "0 0 12px" }}>
         상품명·게시글 제목으로 카드를 검색하고, 기준이 될 카드의 [병합하기]를
         누르면 모달에서 함께 묶을 카드를 추가할 수 있습니다. 상품번호가 달라
         자동 추천이 못 잡는 경우(예: 같은 펩시인데 판매자·옵션이 다른 카드)에
-        쓰세요.
+        쓰세요. 병합 후에도 이 검색 결과에 그대로 남습니다.
       </p>
 
       <div className="toolbar">
@@ -669,17 +705,59 @@ function ManualTab({
         </div>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          margin: "2px 0 12px",
+        }}
+      >
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={repOnly}
+            onChange={(e) => setRepOnly(e.target.checked)}
+            style={{ width: 15, height: 15, cursor: "pointer" }}
+          />
+          대표상품만 노출
+          <span className="sub" style={{ fontWeight: 400 }}>
+            같은 키로 묶인 카드는 대표 하나만
+          </span>
+        </label>
+        {searched && results.length > 0 && (
+          <span className="sub">
+            결과 {visibleResults.length}
+            {repOnly && visibleResults.length !== results.length
+              ? ` (전체 ${results.length})`
+              : ""}
+            개
+          </span>
+        )}
+      </div>
+
       {error && <div className="warn-box">검색 실패: {error}</div>}
 
       {q.trim().length < 2 ? (
         <div className="empty-note">두 글자 이상 입력하면 카드를 검색합니다.</div>
       ) : searched && results.length === 0 ? (
         <div className="empty-note">“{q.trim()}” 검색 결과가 없습니다.</div>
-      ) : results.length > 0 ? (
+      ) : visibleResults.length > 0 ? (
         <div className="admin-card" style={{ padding: 0, overflow: "hidden" }}>
           <table className="admin-table">
             <tbody>
-              {results.map((deal) => (
+              {visibleResults.map((deal) => (
                 <tr key={deal.dealId}>
                   <td className="thumb-cell" style={{ width: 46 }}>
                     <Thumb deal={deal} />
@@ -711,7 +789,7 @@ function ManualTab({
           setBusy={setBusy}
           onDone={onDone}
           onClose={() => setModalBase(null)}
-          onMerged={onMerged}
+          onMerged={handleMerged}
         />
       )}
     </div>
@@ -909,17 +987,8 @@ export function MergeBoard({
     }
   }
 
-  /* 병합 성공 → 자동 추천 탭으로 이동하며 서버 재렌더(결과 확인). */
-  function onMerged() {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set("tab", "recommend");
-      url.searchParams.delete("q");
-      window.location.href = url.toString();
-    } catch {
-      window.location.reload();
-    }
-  }
+  /* 병합 성공 후 처리는 ManualTab이 담당 — 검색 결과에 그대로 머무르며
+     제자리 재조회 + router.refresh(). 여기서는 탐색/리로드를 하지 않는다. */
 
   async function unmerge(deal: MergeDealInfo) {
     setBusy(true);
@@ -1004,7 +1073,6 @@ export function MergeBoard({
           groupsByKey={groupsByKey}
           onDone={done}
           setBusy={setBusy}
-          onMerged={onMerged}
         />
       )}
 
