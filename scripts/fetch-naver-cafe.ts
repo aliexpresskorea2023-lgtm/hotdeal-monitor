@@ -21,6 +21,7 @@ import {
   type NaverCafeApiItem,
 } from "../src/parsers/naver-cafe";
 import { checkExclusion } from "../src/db/exclusion";
+import { classifyPostKind } from "../src/parsers/post-kind";
 
 /* ── .env.local 로더 ─────────────────────────── */
 
@@ -189,13 +190,14 @@ function upsertPostAndDeal(
   db.prepare(
     `INSERT INTO posts (
        community, post_id, url, title, status,
-       products_count, first_seen_at, last_seen_at
-     ) VALUES (?, ?, ?, ?, 'unknown', ?, ?, ?)
+       products_count, first_seen_at, last_seen_at, post_kind
+     ) VALUES (?, ?, ?, ?, 'unknown', ?, ?, ?, ?)
      ON CONFLICT(community, post_id) DO UPDATE SET
        title = excluded.title,
        status = 'unknown',
        products_count = excluded.products_count,
-       last_seen_at = excluded.last_seen_at`,
+       last_seen_at = excluded.last_seen_at,
+       post_kind = excluded.post_kind`,
   ).run(
     "naver_cafe",
     deal.sourcePostId,
@@ -204,6 +206,7 @@ function upsertPostAndDeal(
     product ? 1 : 0,
     now,
     now,
+    classifyPostKind({ title: deal.title }),
   );
 
   // post rowid 조회

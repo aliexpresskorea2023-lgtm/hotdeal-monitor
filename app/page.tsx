@@ -1,5 +1,6 @@
 import { Eye, MessageCircle } from "lucide-react";
 import { type ItemView, filterAndSortFeed } from "@/src/db/queries";
+import { type PostKind } from "@/src/parsers/post-kind";
 import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
@@ -151,6 +152,14 @@ function DealRow({
           <span className={item.status === "ended" ? "tag ended" : "tag live"}>
             {statusLabel(item.status)}
           </span>
+          {item.composition === "bundle" && (
+            <span
+              className="tag bundle"
+              title="여러 상품·행사가 한 글에 묶인 기획/모음 글"
+            >
+              묶음·행사
+            </span>
+          )}
           <span className="tag">{item.categoryNorm}</span>
           {item.shippingText && <span className="tag">{item.shippingText}</span>}
           {item.sources.map((source) => (
@@ -227,6 +236,7 @@ export default async function Home({ searchParams }: PageProps) {
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
   const rawCommunity = firstParam(raw.community);
+  const rawComp = firstParam(raw.comp);
   const rawStatus = firstParam(raw.status);
   const rawSort = firstParam(raw.sort);
   const rawQ = firstParam(raw.q)?.trim() || null;
@@ -248,6 +258,9 @@ export default async function Home({ searchParams }: PageProps) {
     (COMMUNITIES as readonly string[]).includes(rawCommunity)
       ? rawCommunity
       : null;
+  /* 상품 구성 필터: ?comp=single|bundle, 그 외/미지정은 전체(null). */
+  const composition: PostKind | null =
+    rawComp === "single" || rawComp === "bundle" ? rawComp : null;
   const status =
     rawStatus === "active" || rawStatus === "ended" ? rawStatus : "all";
   const sort = rawSort === "hot" || rawSort === "price" ? rawSort : "latest";
@@ -269,6 +282,7 @@ export default async function Home({ searchParams }: PageProps) {
     category,
     store,
     community,
+    composition,
     status,
     sort,
     q: rawQ,
@@ -278,6 +292,7 @@ export default async function Home({ searchParams }: PageProps) {
   if (category) current.cat = category;
   if (store) current.store = store;
   if (community) current.community = community;
+  if (composition) current.comp = composition;
   if (status !== "all") current.status = status;
   if (sort !== "latest") current.sort = sort;
   if (rawQ) current.q = rawQ;
@@ -312,6 +327,9 @@ export default async function Home({ searchParams }: PageProps) {
           {community && (
             <input type="hidden" name="community" value={community} />
           )}
+          {composition && (
+            <input type="hidden" name="comp" value={composition} />
+          )}
           {status !== "all" && (
             <input type="hidden" name="status" value={status} />
           )}
@@ -345,6 +363,13 @@ export default async function Home({ searchParams }: PageProps) {
           <a className={sort === "latest" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: null })}>최신순</a>
           <a className={sort === "hot" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: "hot" })}>인기순</a>
           <a className={sort === "price" ? "fchip active" : "fchip"} href={hrefFor("/", current, { sort: "price" })}>가격순</a>
+        </div>
+
+        <div className="frow">
+          <span className="flabel">상품 구성</span>
+          <a className={composition === null ? "fchip active" : "fchip"} href={hrefFor("/", current, { comp: null })}>전체</a>
+          <a className={composition === "single" ? "fchip active" : "fchip"} href={hrefFor("/", current, { comp: "single" })}>단품</a>
+          <a className={composition === "bundle" ? "fchip active" : "fchip"} href={hrefFor("/", current, { comp: "bundle" })}>묶음·행사</a>
         </div>
 
         <div className="frow">

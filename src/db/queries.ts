@@ -3,6 +3,7 @@ import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { checkExclusion } from "./exclusion";
 import { loadDeadKeys, loadResolutions } from "./link-resolution";
 import { cleanDisplayName, splitNameParts, type NameParts } from "../lib/name";
+import { composeItemKind, type PostKind } from "../parsers/post-kind";
 import {
   ALL_NORM_CATEGORIES,
   isOtherStore,
@@ -75,6 +76,11 @@ export interface ItemSourceView {
    * 핫링크 차단 커뮤니티는 표시 계층에서 no-referrer + onError로 방어.
    */
   bodyImageUrl: string | null;
+  /**
+   * 이 출처 게시글의 상품 구성 ('single' 단품 | 'bundle' 묶음·행사).
+   * 어드민 오버라이드(post_kind_override)가 자동 분류(post_kind)보다 우선.
+   */
+  kind: PostKind;
   stats: {
     views: number | null;
     recommendations: number | null;
@@ -144,6 +150,12 @@ export interface ItemView {
    * 상품 썸네일(imageUrl)을 못 구했을 때의 2순위 폴백. 없으면 null.
    */
   bodyImageUrl: string | null;
+  /**
+   * 카드의 상품 구성 ('single' 단품 | 'bundle' 묶음·행사).
+   * 합성 규칙: 출처 중 하나라도 single이면 단품, 전부 bundle일 때만
+   * 묶음·행사 (composeItemKind). 상품 구성 필터(?comp=)의 기준.
+   */
+  composition: PostKind;
 }
 
 export interface FeedResult {
@@ -170,6 +182,10 @@ interface PostRow {
   last_seen_at: string;
   /** 본문 삽입 대표 이미지 (posts.body_image_url). */
   body_image_url: string | null;
+  /** 상품 구성 자동 분류 ('single'|'bundle'). */
+  post_kind: string;
+  /** 어드민 수동 상품 구성 정정 — 자동 분류보다 우선. */
+  post_kind_override: string | null;
   /** 어드민 수동 상태 지정 (없으면 수집기 판정). */
   status_override: string | null;
   hidden: number;
@@ -380,6 +396,14 @@ function makeSource(member: Member): ItemSourceView {
   const url = deal.url_override ?? deal.product_url;
   const urlType = deal.url_override !== null ? "direct" : deal.url_type;
 
+  /* 상품 구성: 어드민 오버라이드가 자동 분류보다 우선. 값 방어(기본 single). */
+  const kind: PostKind =
+    post.post_kind_override === "single" || post.post_kind_override === "bundle"
+      ? post.post_kind_override
+      : post.post_kind === "bundle"
+        ? "bundle"
+        : "single";
+
   return {
     id: `${post.community}-${post.post_id}`,
     dealId: deal.deal_id,
@@ -402,6 +426,7 @@ function makeSource(member: Member): ItemSourceView {
     firstSeenAt: post.first_seen_at,
     collectedAt: post.last_seen_at,
     bodyImageUrl: post.body_image_url ?? null,
+    kind,
     stats: {
       views: post.views,
       recommendations: post.recommendations,
@@ -579,6 +604,7 @@ function buildItem(key: string, members: Member[]): ItemView {
       firstSource.bodyImageUrl ??
       sources.find((s) => s.bodyImageUrl)?.bodyImageUrl ??
       null,
+    composition: composeItemKind(sources.map((s) => s.kind)),
   };
 }
 
@@ -591,6 +617,11 @@ export interface FeedOptions {
   store?: string | null;
   /** 출처 커뮤니티 필터 (fmkorea/ppomppu/ruliweb/quasarzone/arca) */
   community?: string | null;
+  /**
+   * 상품 구성 필터 (2026-09-16). 'single' = 단품만, 'bundle' = 묶음·행사만.
+   * null/미지정 = 전체(기본 노출). URL 파라미터 ?comp=single|bundle.
+   */
+  composition?: PostKind | null;
   /**
    * 상태 필터. active는 진행중+상태 모름을 포함한다
    * (임시 정책: 상태 모름은 진행중으로 노출).
@@ -676,6 +707,7 @@ export function getDealFeed(
                 status, views, recommendations, comments,
                 affiliate_enabled, affiliate_raw_url,
                 first_seen_at, last_seen_at, body_image_url,
+                post_kind, post_kind_override,
                 status_override, hidden
          FROM posts
          WHERE hidden = 0
@@ -873,6 +905,12 @@ export function filterAndSortFeed(
     /* 출처 중 하나라도 해당 커뮤니티에서 온 아이템만. */
     const com = options.community;
     out = out.filter((i) => i.sources.some((s) => s.source === com));
+  }
+
+  if (options.composition) {
+    /* 상품 구성 필터: 카드 합성값(composition) 기준 정확 매칭. */
+    const comp = options.composition;
+    out = out.filter((i) => i.composition === comp);
   }
 
   if (options.status === "active") {

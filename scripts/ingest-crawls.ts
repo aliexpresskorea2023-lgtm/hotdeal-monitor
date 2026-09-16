@@ -7,6 +7,7 @@ import { parseRuliwebHtml } from "../src/parsers/ruliweb";
 import { parseQuasarzoneHtml } from "../src/parsers/quasarzone";
 import { parseArcaHtml } from "../src/parsers/arca";
 import { extractBodyImage } from "../src/parsers/body-image";
+import { classifyPostKind } from "../src/parsers/post-kind";
 import {
   normalizeArcaDeal,
   normalizeFmkoreaDeal,
@@ -153,14 +154,16 @@ function upsertPost(
 ): number {
   const now = nowKstIso();
   const affiliate = affiliateOf(post);
+  /* 상품 구성 자동 분류 — 어드민 오버라이드(post_kind_override)는 건드리지 않는다. */
+  const postKind = classifyPostKind({ title: post.title });
 
   db.prepare(
     `INSERT INTO posts (
        community, post_id, url, title, posted_at, status,
        views, recommendations, comments,
        affiliate_enabled, affiliate_raw_url, products_count,
-       first_seen_at, last_seen_at, snapshot_path, body_image_url
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       first_seen_at, last_seen_at, snapshot_path, body_image_url, post_kind
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(community, post_id) DO UPDATE SET
        url = excluded.url,
        title = COALESCE(NULLIF(excluded.title, ''), posts.title),
@@ -174,7 +177,8 @@ function upsertPost(
        products_count = excluded.products_count,
        last_seen_at = excluded.last_seen_at,
        snapshot_path = excluded.snapshot_path,
-       body_image_url = COALESCE(excluded.body_image_url, posts.body_image_url)`,
+       body_image_url = COALESCE(excluded.body_image_url, posts.body_image_url),
+       post_kind = excluded.post_kind`,
   ).run(
     community,
     entry.postId,
@@ -192,6 +196,7 @@ function upsertPost(
     now,
     snapshotPath,
     bodyImageUrl,
+    postKind,
   );
 
   const row = db

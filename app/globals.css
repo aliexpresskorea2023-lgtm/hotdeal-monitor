@@ -27,6 +27,8 @@
   --ended: #999;
   --ended-bg: #f0f0ee;
   --rec: #e07f00;
+  --bundle: #6d4bb8;
+  --bundle-bg: #f1ebfb;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -501,6 +503,11 @@ a {
 .tag.ended {
   background: var(--ended-bg);
   color: var(--ended);
+}
+
+.tag.bundle {
+  background: var(--bundle-bg);
+  color: var(--bundle);
 }
 
 .tag.src {
@@ -1629,6 +1636,8 @@ a {
   --ended: #98a1ab;
   --ended-bg: #2a2d31;
   --rec: #f0a24a;
+  --bundle: #b79cf0;
+  --bundle-bg: #241d38;
 }
 /*
  ---break---

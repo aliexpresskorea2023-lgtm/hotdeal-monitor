@@ -1,4 +1,5 @@
 import { hotScore, itemAgeMs, filterAndSortFeed, type ItemView } from "@/src/db/queries";
+import { type PostKind } from "@/src/parsers/post-kind";
 import { getCachedDealFeed } from "@/src/db/cached";
 import { getAdminViewer } from "@/src/lib/admin-viewer";
 import { AdminEditLink } from "@/components/admin/edit-modal";
@@ -84,6 +85,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
   const rawCat = firstParam(raw.cat);
   const rawStore = firstParam(raw.store);
   const rawCommunity = firstParam(raw.community);
+  const rawComp = firstParam(raw.comp);
 
   const category: NormCategory | null = (
     CATEGORIES as readonly string[]
@@ -101,14 +103,22 @@ export default async function RankingPage({ searchParams }: PageProps) {
     (COMMUNITIES as readonly string[]).includes(rawCommunity)
       ? rawCommunity
       : null;
+  /* 상품 구성 필터: ?comp=single|bundle, 그 외/미지정은 전체(null). */
+  const composition: PostKind | null =
+    rawComp === "single" || rawComp === "bundle" ? rawComp : null;
 
   /*
    * 2026-09-08: 홈과 동일한 무필터 캐시 엔트리 공유.
    * ranking은 hotScore 기반 자체 정렬과 24시간 나이 컷을 쓰므로
-   * filterAndSortFeed에는 category/store/community만 넘긴다.
+   * filterAndSortFeed에는 category/store/community/composition만 넘긴다.
    */
   const { items: allItems, hasData } = await getCachedDealFeed({});
-  const items = filterAndSortFeed(allItems, { category, store, community });
+  const items = filterAndSortFeed(allItems, {
+    category,
+    store,
+    community,
+    composition,
+  });
 
   const nowMs = Date.now();
   const ranked = [...items]
@@ -122,6 +132,7 @@ export default async function RankingPage({ searchParams }: PageProps) {
   if (category) current.cat = category;
   if (store) current.store = store;
   if (community) current.community = community;
+  if (composition) current.comp = composition;
 
   return (
     <>
@@ -136,6 +147,28 @@ export default async function RankingPage({ searchParams }: PageProps) {
       </div>
 
       <section className="toolbar">
+        <div className="frow">
+          <span className="flabel">상품 구성</span>
+          <a
+            className={composition === null ? "fchip active" : "fchip"}
+            href={hrefFor("/ranking", current, { comp: null })}
+          >
+            전체
+          </a>
+          <a
+            className={composition === "single" ? "fchip active" : "fchip"}
+            href={hrefFor("/ranking", current, { comp: "single" })}
+          >
+            단품
+          </a>
+          <a
+            className={composition === "bundle" ? "fchip active" : "fchip"}
+            href={hrefFor("/ranking", current, { comp: "bundle" })}
+          >
+            묶음·행사
+          </a>
+        </div>
+
         <div className="frow">
           <span className="flabel">카테고리</span>
           <a
@@ -256,6 +289,14 @@ export default async function RankingPage({ searchParams }: PageProps) {
                     <img src={logo} alt="" />
                     {item.storeNorm}
                     <span>· {sourceLabel(item.firstSource.source)}</span>
+                    {item.composition === "bundle" && (
+                      <span
+                        className="tag bundle"
+                        title="여러 상품·행사가 한 글에 묶인 기획/모음 글"
+                      >
+                        묶음·행사
+                      </span>
+                    )}
                   </div>
                   <a
                     className="row-title"

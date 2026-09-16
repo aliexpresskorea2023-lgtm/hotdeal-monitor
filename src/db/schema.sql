@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS posts (
   -- 상품 썸네일(product_images)을 못 구한 딜의 2순위 폴백.
   -- 핫링크 차단 커뮤니티(arca·quasarzone)는 R2 재호스팅 URL로 대체될 수 있음.
   body_image_url TEXT,
+  -- 상품 구성 자동 분류 (2026-09-16). src/parsers/post-kind.ts.
+  -- 'single' = 단품, 'bundle' = 묶음·행사(기획전·모음전·브랜드위크·
+  -- 전단지·N종 택 등 한 글에 여러 상품/행사가 묶인 경우).
+  -- 정밀도 우선 보수 분류라 기본값은 'single'(확신 없으면 단품).
+  post_kind TEXT NOT NULL DEFAULT 'single'
+    CHECK(post_kind IN ('single', 'bundle')),
+  -- 어드민 수동 상품 구성 정정. 설정 시 자동 분류(post_kind)보다 우선.
+  -- 해제하면 NULL → 자동 분류 복귀.
+  post_kind_override TEXT
+    CHECK(post_kind_override IN ('single', 'bundle')
+          OR post_kind_override IS NULL),
   -- 어드민 수동 상태 지정(진행중/종료 고정). 노출 시 수집기 상태보다 우선.
   -- 해제하면 NULL → 수집기 판정 복귀.
   status_override TEXT

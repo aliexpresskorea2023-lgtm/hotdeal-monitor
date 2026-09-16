@@ -37,6 +37,14 @@ const POST_COLUMNS: Array<{ name: string; ddl: string }> = [
     name: "body_image_url",
     ddl: "ALTER TABLE posts ADD COLUMN body_image_url TEXT",
   },
+  {
+    name: "post_kind",
+    ddl: "ALTER TABLE posts ADD COLUMN post_kind TEXT NOT NULL DEFAULT 'single'",
+  },
+  {
+    name: "post_kind_override",
+    ddl: "ALTER TABLE posts ADD COLUMN post_kind_override TEXT",
+  },
 ];
 
 const IMAGE_COLUMNS: Array<{ name: string; ddl: string }> = [
