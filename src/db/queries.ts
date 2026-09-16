@@ -218,6 +218,11 @@ interface DealRow {
   store_override: string | null;
   /** 구매링크 수동 지정 — 설정 시 상품 병합 키도 이 링크 기준. */
   url_override: string | null;
+  /**
+   * 카드 병합 수동 지정 (2단계). 설정 시 이 값이 병합 키 최상위 우선 —
+   * URL이 다르거나 링크가 없는 카드도 같은 상품으로 묶는다.
+   */
+  product_key_override: string | null;
   hidden: number;
   excluded_reason: string | null;
   exclusion_restored: number;
@@ -367,6 +372,40 @@ export function productKeyFromUrl(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 유효 병합 키 합성 — 피드·히스토리·어드민 공용 (2단계, 2026-09-16).
+ *
+ * 우선순위: product_key_override(어드민 수동 병합) > URL 키(수동 링크·
+ * 단축링크 해석 반영) > 게시글 폴백(post:<community>:<id>#<seq>).
+ * urlKey는 썸네일 조회·사망링크 판정에 쓰는 실제 URL 기반 키이고,
+ * key는 카드 정체성(그룹화)에 쓰는 최종 키다. 수동 병합 키가 있으면
+ * 둘은 다를 수 있다.
+ */
+export function computeMergeKeys(
+  deal: {
+    product_url: string | null;
+    url_override: string | null;
+    product_key_override: string | null;
+    seq: number;
+    community: string;
+    post_id: string;
+  },
+  resolutions: Map<string, string> = new Map(),
+): { urlKey: string | null; key: string } {
+  const effectiveUrl = deal.url_override ?? deal.product_url;
+  const resolved = effectiveUrl ? resolutions.get(effectiveUrl) : undefined;
+  const urlKey = effectiveUrl
+    ? productKeyFromUrl(resolved ?? effectiveUrl)
+    : null;
+
+  const key =
+    deal.product_key_override ??
+    urlKey ??
+    `post:${deal.community}:${deal.post_id}#${deal.seq}`;
+
+  return { urlKey, key };
 }
 
 function statusOf(row: PostRow, linkDead = false): PostStatus {
@@ -731,8 +770,8 @@ export function getDealFeed(
                 product_url, url_type, raw_price, raw_shipping,
                 discount_types, discount_codes, discount_description,
                 name_override, price_override, category_override,
-                store_override, url_override, hidden, excluded_reason,
-                exclusion_restored
+                store_override, url_override, product_key_override, hidden,
+                excluded_reason, exclusion_restored
          FROM deals
          WHERE post_rowid IN (${placeholders})
          ORDER BY post_rowid, seq`,
@@ -783,23 +822,24 @@ export function getDealFeed(
       }
 
       /* 병합 키는 수동 지정 링크 우선 — 오버라이드가 카드 정체성을 바꾼다. */
-      const effectiveUrl = deal.url_override ?? deal.product_url;
-      const resolved = effectiveUrl
-        ? resolutions.get(effectiveUrl)
-        : undefined;
-      const urlKey = effectiveUrl
-        ? productKeyFromUrl(resolved ?? effectiveUrl)
-        : null;
+      const { urlKey, key } = computeMergeKeys(
+        { ...deal, community: post.community, post_id: post.post_id },
+        resolutions,
+      );
 
       const member: Member = {
         post,
         deal,
         linkDead: urlKey !== null && deadKeys.has(urlKey),
       };
-      const key =
-        urlKey ??
-        `post:${post.community}:${post.post_id}#${deal.seq}`;
 
+      /*
+       * 병합 키 우선순위 (2단계):
+       *   product_key_override (어드민 수동 병합) > URL 기반 키 > 게시글 폴백.
+       * 수동 병합 키는 URL이 다르거나 링크가 없는 카드도 한 상품으로 묶는다.
+       * linkDead 판정은 여전히 실제 URL 키(urlKey) 기준 — 수동 키는 가상이라
+       * 사망 링크 검사 대상이 아니다.
+       */
       const list = groups.get(key);
       if (list) list.push(member);
       else groups.set(key, [member]);

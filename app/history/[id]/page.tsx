@@ -115,8 +115,18 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
    * TTL(30분)당 1회만 D1을 읽는다.
    */
   const { items } = await getCachedPriceHistory({ limit: 1000, sort: "latest" });
-  const item = items.find((i) => i.dealId === dealId);
+  /*
+   * 2단계 병합: 히스토리는 이제 유효 병합 키 단위라 item.dealId는 대표 딜.
+   * 병합된 그룹의 다른 멤버 딜 id로 들어와도 같은 카드를 보여주도록
+   * 대표 id와 멤버 id 목록 모두에서 찾는다.
+   */
+  const item = items.find(
+    (i) => i.dealId === dealId || i.memberDealIds.includes(dealId),
+  );
   if (!item) notFound();
+
+  /* 기간 필터 링크는 대표 딜 id 기준 — 정규 경로로 수렴. */
+  const canonicalId = item.dealId;
 
   const cutoff =
     rangeDef.months === null
@@ -215,7 +225,7 @@ export default async function HistoryDetailPage({ params, searchParams }: PagePr
             <a
               key={r.key}
               className={range === r.key ? "fchip active" : "fchip"}
-              href={hrefFor(`/history/${dealId}`, current, { range: r.key === "3m" ? null : r.key })}
+              href={hrefFor(`/history/${canonicalId}`, current, { range: r.key === "3m" ? null : r.key })}
             >
               {r.label}
             </a>

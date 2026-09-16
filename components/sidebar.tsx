@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ChartLine,
+  Combine,
   Flame,
   Image,
   Layers,
@@ -37,6 +38,7 @@ const MENU = [
 
 const ADMIN_MENU = [
   { href: "/admin/deals", label: "핫딜 카드 관리", icon: SquarePen },
+  { href: "/admin/merge", label: "카드 병합 관리", icon: Combine },
   { href: "/admin/thumbnails", label: "썸네일 관리", icon: Image },
   { href: "/admin/excluded", label: "제외/미분류 상품", icon: Shapes },
   { href: "/admin/taxonomy", label: "택소노미", icon: Layers },

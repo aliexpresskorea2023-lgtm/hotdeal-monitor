@@ -132,6 +132,12 @@ CREATE TABLE IF NOT EXISTS deals (
   -- 구매링크 수동 지정. 설정 시 노출·상품 병합 키(productKey)가
   -- 이 링크 기준으로 바뀌고, 링크 유형은 직접 링크로 취급한다.
   url_override TEXT,
+  -- 카드 병합 수동 지정 (2026-09-16, 2단계). 같은 상품인데 URL이
+  -- 다르거나(커뮤니티 경유·단축링크) 링크가 아예 없는 카드를
+  -- 어드민이 한 키로 묶을 때 쓴다. 설정 시 병합 키 우선순위 최상위:
+  -- product_key_override > url_override/product_url 기반 키 > 게시글 폴백.
+  -- 값은 병합 대상 그룹의 대표 상품 키(일반적으로 대표 딜의 URL 키).
+  product_key_override TEXT,
   -- 어드민 소프트 하이드.
   hidden INTEGER NOT NULL DEFAULT 0,
 

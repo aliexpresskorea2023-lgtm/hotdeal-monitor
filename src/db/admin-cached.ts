@@ -1,13 +1,17 @@
 import { unstable_cache } from "next/cache";
 import { DEALS_CACHE_TAG } from "./cached";
 import {
+  buildMergeIndex,
   buildThumbnailRows,
   countAdminDeals,
   listAdminDeals,
+  searchMergeDeals,
   type AdminDealRow,
   type AdminListOptions,
   type AdminListResult,
   type AdminThumbnailRow,
+  type MergeDealInfo,
+  type MergeIndex,
 } from "./admin-queries";
 
 /*
@@ -60,6 +64,31 @@ export const getCachedThumbnailRows = unstable_cache(
   { revalidate: ADMIN_REVALIDATE, tags: [DEALS_CACHE_TAG] },
 );
 
+/**
+ * buildMergeIndex 캐싱 래퍼 — 유일한 캐시 키.
+ * /admin/merge가 최근 딜 스캔(수천 행)을 렌더마다 반복하지 않도록
+ * TTL 60초 + 쓰기 tag 무효화로 고정한다. 병합/해제 즉시 반영.
+ */
+export const getCachedMergeIndex = unstable_cache(
+  async (): Promise<MergeIndex> => buildMergeIndex(),
+  ["admin-merge-index"],
+  { revalidate: ADMIN_REVALIDATE, tags: [DEALS_CACHE_TAG] },
+);
+
+/** searchMergeDeals 캐싱 래퍼 — 검색어별 캐시 (단일 사용자라 키 공간 작음). */
+export const getCachedMergeSearch = unstable_cache(
+  async (q: string): Promise<MergeDealInfo[]> => searchMergeDeals(q),
+  ["admin-merge-search"],
+  { revalidate: ADMIN_REVALIDATE, tags: [DEALS_CACHE_TAG] },
+);
+
 /* re-export — 페이지가 캐시 래퍼와 원본 함수를 함께 import할 필요 없이
  * 이 모듈 하나로 어드민 읽기를 해결할 수 있게. */
-export type { AdminDealRow, AdminListOptions, AdminListResult, AdminThumbnailRow };
+export type {
+  AdminDealRow,
+  AdminListOptions,
+  AdminListResult,
+  AdminThumbnailRow,
+  MergeDealInfo,
+  MergeIndex,
+};

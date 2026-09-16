@@ -1,6 +1,7 @@
 import { DEFAULT_DB_PATH, openDbReadOnly } from "./index";
 import { loadResolutions } from "./link-resolution";
-import { productKeyFromUrl, type PostStatus } from "./queries";
+import { cleanDisplayName } from "../lib/name";
+import { computeMergeKeys, productKeyFromUrl, type PostStatus } from "./queries";
 
 /*
  * 어드민 읽기 쿼리 — 공개 피드(queries.ts)와 분리.
@@ -615,6 +616,426 @@ export function getAdminDeal(
         shipping: o.shipping,
       })),
       siblings: siblings.map((s) => ({ dealId: s.id, name: s.name })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/*
+ * 카드 병합 관리 읽기 계층 (2단계, 2026-09-16).
+ *
+ * 공개 피드의 자동 병합은 URL 키(productKeyFromUrl)로만 모은다. 그래서
+ * (a) 구매링크가 없거나 (b) 커뮤니티 경유·단축링크라 키가 갈라지는
+ * 같은 상품 카드가 따로 논다. 이 계층은 어드민이 그런 카드를 찾아
+ * 수동으로 묶도록 "현재 병합된 그룹"과 "병합 후보"를 제공한다.
+ *
+ * 유효 병합 키는 피드·히스토리와 동일 규칙:
+ *   product_key_override > URL 키(수동 링크·단축링크 해석 반영) > 게시글 폴백.
+ */
+
+export interface MergeDealInfo {
+  dealId: number;
+  community: string;
+  postId: string;
+  postUrl: string;
+  postTitle: string;
+  name: string | null;
+  store: string | null;
+  category: string | null;
+  priceText: string;
+  productUrl: string | null;
+  urlOverride: string | null;
+  productKeyOverride: string | null;
+  /** 피드·히스토리와 동일한 유효 병합 키. */
+  effectiveKey: string;
+  /** URL 기반 키 (썸네일·사망링크 판정용). 링크 없으면 null. */
+  urlKey: string | null;
+  itemId: string | null;
+  status: PostStatus;
+  lastSeenAt: string;
+  imageUrl: string | null;
+}
+
+export interface MergeGroup {
+  key: string;
+  /** 멤버 중 하나라도 수동 병합(product_key_override)이면 true. */
+  manual: boolean;
+  deals: MergeDealInfo[];
+}
+
+export type CandidateSignal = "item_id" | "name";
+
+export interface MergeCandidate {
+  /** 클러스터 식별 서명 (디버그·키용). */
+  signature: string;
+  signal: CandidateSignal;
+  /** 이 서명 아래 서로 다른 유효 키 수 (2 이상이어야 병합 후보). */
+  distinctKeys: number;
+  deals: MergeDealInfo[];
+}
+
+export interface MergeIndex {
+  groups: MergeGroup[];
+  candidates: MergeCandidate[];
+  /** 스캔한 딜 수 (후보 신뢰도 참고용). */
+  scanned: number;
+}
+
+/** 이름 유사도 서명 — 프로모션·스토어 수식을 벗기고 정규화. */
+function nameSignature(name: string | null): string | null {
+  if (!name) return null;
+
+  const cleaned = cleanDisplayName(name) ?? name;
+  const sig = cleaned
+    .toLowerCase()
+    .replace(/[\s\-_,.·:;()\/[\]]+/g, "")
+    .trim();
+
+  /* 너무 짧은 서명은 오탐(예: "증정", "1+1")이 많으므로 무시. */
+  return sig.length >= 8 ? sig : null;
+}
+
+function mergeStatus(
+  postStatus: string,
+  statusOverride: string | null,
+): PostStatus {
+  if (statusOverride === "active" || statusOverride === "ended") {
+    return statusOverride;
+  }
+  return postStatus === "active" || postStatus === "ended"
+    ? postStatus
+    : "unknown";
+}
+
+interface MergeRawRow {
+  deal_id: number;
+  seq: number;
+  community: string;
+  post_id: string;
+  post_url: string;
+  post_title: string;
+  product_name: string | null;
+  name_override: string | null;
+  store: string | null;
+  store_override: string | null;
+  category: string | null;
+  price_text: string;
+  product_url: string | null;
+  url_override: string | null;
+  product_key_override: string | null;
+  item_id: string | null;
+  status: string;
+  status_override: string | null;
+  last_seen_at: string;
+}
+
+/**
+ * 병합 작업 대상 딜을 읽어 유효 키·URL 키·썸네일을 붙인다.
+ * 제외(미복원)·숨김 딜은 뺀다. q가 있으면 상품명·게시글 제목 부분 일치.
+ */
+function loadMergeDeals(
+  db: ReturnType<typeof openDbReadOnly> & object,
+  opts: { limit: number; q?: string | null } = { limit: 3000 },
+): MergeDealInfo[] {
+  const where = [
+    "d.excluded_reason IS NULL",
+    "d.hidden = 0",
+    "p.hidden = 0",
+  ];
+  const params: (string | number)[] = [];
+
+  const needle = opts.q?.trim();
+  if (needle && needle.length > 0) {
+    where.push(
+      `(COALESCE(d.name_override, d.product_name) LIKE ? OR p.title LIKE ?)`,
+    );
+    params.push(`%${needle}%`, `%${needle}%`);
+  }
+
+  params.push(opts.limit);
+
+  const raw = db
+    .prepare(
+      `SELECT d.id AS deal_id, d.seq, p.community, p.post_id,
+              p.url AS post_url, p.title AS post_title,
+              d.product_name, d.name_override, d.store, d.store_override,
+              d.category, d.price_text, d.product_url, d.url_override,
+              d.product_key_override, d.item_id,
+              p.status, p.status_override, p.last_seen_at
+       FROM deals d
+       JOIN posts p ON p.id = d.post_rowid
+       WHERE ${where.join(" AND ")}
+       ORDER BY p.last_seen_at DESC, d.id DESC
+       LIMIT ?`,
+    )
+    .all(...params) as unknown as MergeRawRow[];
+
+  const resolutions = loadResolutions(
+    db,
+    raw.map((r) => r.url_override ?? r.product_url),
+  );
+
+  const infos: MergeDealInfo[] = raw.map((r) => {
+    const { urlKey, key: effectiveKey } = computeMergeKeys(r, resolutions);
+
+    return {
+      dealId: r.deal_id,
+      community: r.community,
+      postId: r.post_id,
+      postUrl: r.post_url,
+      postTitle: r.post_title,
+      name: r.name_override ?? r.product_name,
+      store: r.store_override ?? r.store,
+      category: r.category,
+      priceText: r.price_text,
+      productUrl: r.product_url,
+      urlOverride: r.url_override,
+      productKeyOverride: r.product_key_override,
+      effectiveKey,
+      urlKey,
+      itemId: r.item_id,
+      status: mergeStatus(r.status, r.status_override),
+      lastSeenAt: r.last_seen_at,
+      imageUrl: null,
+    };
+  });
+
+  attachMergeImages(db, infos);
+
+  return infos;
+}
+
+/** URL 키 기준으로 썸네일(수동 지정 우선)을 붙인다. */
+function attachMergeImages(
+  db: ReturnType<typeof openDbReadOnly> & object,
+  infos: MergeDealInfo[],
+): void {
+  const keys = [
+    ...new Set(
+      infos.map((i) => i.urlKey).filter((k): k is string => k !== null),
+    ),
+  ];
+  if (keys.length === 0) return;
+
+  /*
+   * product_images는 상품 키당 1행이라 규모가 작다. 키가 수천 개면
+   * IN(...) 바인드가 D1 100KB 문장 상한을 넘을 수 있어(admin-queries
+   * 기존 주석 참조) 전체 조회 후 JS 매칭한다.
+   */
+  const imgs = db
+    .prepare(
+      `SELECT product_key, image_url, image_override FROM product_images`,
+    )
+    .all() as Array<{
+    product_key: string;
+    image_url: string;
+    image_override: string | null;
+  }>;
+
+  const byKey = new Map(
+    imgs.map((r) => [
+      r.product_key,
+      r.image_override ?? (r.image_url !== "" ? r.image_url : null),
+    ]),
+  );
+
+  for (const info of infos) {
+    if (info.urlKey) info.imageUrl = byKey.get(info.urlKey) ?? null;
+  }
+}
+
+/** 후보 클러스터 상한 — 화면이 한 번에 다룰 수 있는 정도. */
+const MAX_CANDIDATES = 40;
+
+/**
+ * 병합 인덱스 — 최근 딜을 스캔해 (1) 이미 병합된 그룹과 (2) 병합 후보를
+ * 한 번의 작업 집합에서 파생한다. 페이지 렌더당 D1 읽기를 1회로 고정하려고
+ * groups·candidates를 함께 계산한다 (buildThumbnailRows와 같은 이유).
+ */
+export function buildMergeIndex(
+  dbPath: string = DEFAULT_DB_PATH,
+  scanLimit = 3000,
+): MergeIndex {
+  const db = openDbReadOnly(dbPath);
+  if (!db) return { groups: [], candidates: [], scanned: 0 };
+
+  try {
+    const infos = loadMergeDeals(db, { limit: scanLimit });
+
+    /* (1) 유효 키별 그룹 — 멤버 2개 이상. */
+    const byKey = new Map<string, MergeDealInfo[]>();
+    for (const info of infos) {
+      const list = byKey.get(info.effectiveKey) ?? [];
+      list.push(info);
+      byKey.set(info.effectiveKey, list);
+    }
+
+    const groups: MergeGroup[] = [...byKey.entries()]
+      .filter(([, deals]) => deals.length >= 2)
+      .map(([key, deals]) => ({
+        key,
+        manual: deals.some((d) => d.productKeyOverride !== null),
+        deals,
+      }));
+
+    /* 수동 병합 그룹 우선, 그다음 최신·큰 그룹. */
+    groups.sort(
+      (a, b) =>
+        Number(b.manual) - Number(a.manual) ||
+        b.deals[0].lastSeenAt.localeCompare(a.deals[0].lastSeenAt) ||
+        b.deals.length - a.deals.length,
+    );
+
+    /*
+     * (2) 병합 후보 — 서명(상품번호 > 정규화 이름)이 같은데 유효 키가
+     * 2개 이상으로 갈라진 딜 뭉치. 이미 한 키로 모인 뭉치는 후보가 아니다.
+     */
+    const bySig = new Map<
+      string,
+      { signal: CandidateSignal; deals: MergeDealInfo[] }
+    >();
+
+    for (const info of infos) {
+      /* 상품번호(item_id)가 가장 강한 신호 — 있으면 그것만 쓴다. */
+      const sig = info.itemId
+        ? `id:${info.itemId}`
+        : `nm:${nameSignature(info.name) ?? ""}`;
+
+      if (sig === "nm:") continue;
+
+      const bucket = bySig.get(sig) ?? {
+        signal: info.itemId ? "item_id" : "name",
+        deals: [],
+      };
+      bucket.deals.push(info);
+      bySig.set(sig, bucket);
+    }
+
+    const candidates: MergeCandidate[] = [];
+
+    for (const [signature, bucket] of bySig) {
+      if (bucket.deals.length < 2) continue;
+
+      const distinctKeys = new Set(
+        bucket.deals.map((d) => d.effectiveKey),
+      );
+      /* 전부 이미 한 키면 병합 완료 — 후보 아님. */
+      if (distinctKeys.size < 2) continue;
+
+      candidates.push({
+        signature,
+        signal: bucket.signal,
+        distinctKeys: distinctKeys.size,
+        deals: bucket.deals,
+      });
+    }
+
+    /* 강한 신호(상품번호) 우선, 그다음 갈라진 키 수·딜 수·최신순. */
+    candidates.sort(
+      (a, b) =>
+        (a.signal === b.signal ? 0 : a.signal === "item_id" ? -1 : 1) ||
+        b.distinctKeys - a.distinctKeys ||
+        b.deals.length - a.deals.length ||
+        b.deals[0].lastSeenAt.localeCompare(a.deals[0].lastSeenAt),
+    );
+
+    return {
+      groups,
+      candidates: candidates.slice(0, MAX_CANDIDATES),
+      scanned: infos.length,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/** 수동 병합용 딜 검색 — 상품명·게시글 제목 부분 일치. */
+export function searchMergeDeals(
+  q: string,
+  limit = 50,
+  dbPath: string = DEFAULT_DB_PATH,
+): MergeDealInfo[] {
+  const db = openDbReadOnly(dbPath);
+  if (!db) return [];
+
+  try {
+    return loadMergeDeals(db, { limit, q });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 특정 딜들의 병합 정보 — 병합 실행 전 대표 키 산출·비교 화면용.
+ * 대표 딜(canonicalDealId)의 유효 키를 canonicalKey로 돌려준다.
+ */
+export function getMergePreview(
+  dealIds: number[],
+  canonicalDealId: number,
+  dbPath: string = DEFAULT_DB_PATH,
+): { deals: MergeDealInfo[]; canonicalKey: string | null } | null {
+  const db = openDbReadOnly(dbPath);
+  if (!db) return null;
+
+  try {
+    const ids = [...new Set([...dealIds, canonicalDealId])].filter(
+      (n) => Number.isInteger(n),
+    );
+    if (ids.length === 0) return null;
+
+    const ph = ids.map(() => "?").join(", ");
+    const raw = db
+      .prepare(
+        `SELECT d.id AS deal_id, d.seq, p.community, p.post_id,
+                p.url AS post_url, p.title AS post_title,
+                d.product_name, d.name_override, d.store, d.store_override,
+                d.category, d.price_text, d.product_url, d.url_override,
+                d.product_key_override, d.item_id,
+                p.status, p.status_override, p.last_seen_at
+         FROM deals d
+         JOIN posts p ON p.id = d.post_rowid
+         WHERE d.id IN (${ph})`,
+      )
+      .all(...ids) as unknown as MergeRawRow[];
+
+    const resolutions = loadResolutions(
+      db,
+      raw.map((r) => r.url_override ?? r.product_url),
+    );
+
+    const infos: MergeDealInfo[] = raw.map((r) => {
+      const { urlKey, key: effectiveKey } = computeMergeKeys(r, resolutions);
+
+      return {
+        dealId: r.deal_id,
+        community: r.community,
+        postId: r.post_id,
+        postUrl: r.post_url,
+        postTitle: r.post_title,
+        name: r.name_override ?? r.product_name,
+        store: r.store_override ?? r.store,
+        category: r.category,
+        priceText: r.price_text,
+        productUrl: r.product_url,
+        urlOverride: r.url_override,
+        productKeyOverride: r.product_key_override,
+        effectiveKey,
+        urlKey,
+        itemId: r.item_id,
+        status: mergeStatus(r.status, r.status_override),
+        lastSeenAt: r.last_seen_at,
+        imageUrl: null,
+      };
+    });
+
+    attachMergeImages(db, infos);
+
+    const canonical = infos.find((i) => i.dealId === canonicalDealId);
+
+    return {
+      deals: infos,
+      canonicalKey: canonical ? canonical.effectiveKey : null,
     };
   } finally {
     db.close();

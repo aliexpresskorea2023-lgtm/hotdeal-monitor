@@ -287,3 +287,67 @@ export function resetImageCache(db: Db, productKey: string): void {
   );
   audit(db, "delete", "image", 0, productKey, null, null);
 }
+
+/*
+ * 카드 병합 (2단계, 2026-09-16).
+ *
+ * 같은 상품인데 구매링크가 다르거나(커뮤니티 경유·단축링크) 아예 없는
+ * 카드는 공개 피드의 자동 병합(URL 키)으로 모이지 않는다. 어드민이
+ * 딜 여러 개를 하나의 대표 키로 묶으면, 피드 병합 키 우선순위
+ * (product_key_override > URL 키 > 게시글 폴백)에 따라 한 카드로 합쳐지고
+ * 최저가 히스토리도 그 키 기준으로 소급 통합된다.
+ *
+ * 저장은 항상 product_key_override 컬럼에만 — 파서 값(product_url 등)은
+ * 건드리지 않는다. 해제는 이 컬럼을 NULL로 되돌려 자연 키로 복귀시킨다.
+ */
+
+/**
+ * 딜 여러 개를 대표 키(canonicalKey)로 병합.
+ * 이미 같은 키인 딜은 건너뛴다. 반환값 = 실제로 변경된 딜 수.
+ */
+export function setMergeKey(
+  db: Db,
+  dealIds: number[],
+  canonicalKey: string,
+): number {
+  const key = canonicalKey.trim();
+  if (key === "") throw new Error("병합 키가 비어 있습니다");
+
+  let changed = 0;
+
+  for (const dealId of dealIds) {
+    const current = db
+      .prepare(`SELECT product_key_override FROM deals WHERE id = ?`)
+      .get(dealId) as { product_key_override: string | null } | undefined;
+
+    if (!current) throw new Error(`deal ${dealId} 없음`);
+    if (current.product_key_override === key) continue;
+
+    db.prepare(`UPDATE deals SET product_key_override = ? WHERE id = ?`).run(
+      key,
+      dealId,
+    );
+    audit(db, "merge", "deal", dealId, "product_key_override",
+      current.product_key_override, key);
+    changed += 1;
+  }
+
+  return changed;
+}
+
+/** 딜 하나의 수동 병합을 해제 — 자연 키(URL/게시글)로 복귀. */
+export function clearMergeKey(db: Db, dealId: number): void {
+  const current = db
+    .prepare(`SELECT product_key_override FROM deals WHERE id = ?`)
+    .get(dealId) as { product_key_override: string | null } | undefined;
+
+  if (!current) throw new Error(`deal ${dealId} 없음`);
+  if (current.product_key_override === null) return;
+
+  db.prepare(`UPDATE deals SET product_key_override = NULL WHERE id = ?`).run(
+    dealId,
+  );
+  audit(db, "unmerge", "deal", dealId, "product_key_override",
+    current.product_key_override, null);
+}
+
