@@ -2192,3 +2192,173 @@ a {
   font-size: 12.5px;
   line-height: 1.6;
 }
+
+/* ==========================================================================
+ * 모바일 정리 (≤ 640px) — PC 화면은 그대로.
+ * 1) 필터: 줄바꿈 대신 한 줄 가로 스크롤 칩. 라벨은 왼쪽 고정.
+ * 2) 카드: [썸네일 | 쇼핑몰·제목·태그] / [가격·통계 한 줄] / [버튼 2개]
+ *    제목 2줄, 쇼핑몰 이름 1줄에서 말줄임.
+ * 레이어 밖(unlayered)에 두어 기존 규칙보다 우선한다.
+ * ========================================================================== */
+@media (max-width: 640px) {
+  /* ---------- 필터 ---------- */
+  body .toolbar { gap: 10px; }
+
+  body .toolbar .frow {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* 화면 끝까지 스크롤되게 오른쪽 여백만큼 빼기 */
+    margin-right: -16px;
+    padding-right: 16px;
+    padding-bottom: 2px;
+  }
+  body .toolbar .frow::-webkit-scrollbar { display: none; }
+
+  body .toolbar .flabel {
+    flex: none;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 56px;
+    padding-right: 6px;
+    font-size: 12px;
+    background: var(--background, #fff);
+    box-shadow: 8px 0 8px -6px var(--background, #fff);
+  }
+  /* 상태·정렬 사이 여백용 span: 두 번째 라벨과 붙지 않게만 */
+  body .toolbar .frow > span[style] { flex: none; width: 4px !important; }
+
+  body .toolbar .fchip {
+    flex: none;
+    white-space: nowrap;
+    padding: 6px 12px;
+    font-size: 13px;
+    line-height: 1.2;
+  }
+  body .toolbar .fchip.logo {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  body .toolbar .fchip.logo img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+
+  body .searchbar input[type="search"] { min-width: 0; font-size: 16px; } /* iOS 확대 방지 */
+
+  /* ---------- 카드 ---------- */
+  body .deal-list .deal-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb grow"
+      "rail  rail"
+      "acts  acts";
+    gap: 10px 12px;
+    padding: 14px;
+    align-items: start;
+  }
+
+  body .deal-row .thumb {
+    grid-area: thumb;
+    width: 64px;
+    height: 64px;
+    margin: 0;
+  }
+  body .deal-row .thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+  body .deal-row .row-grow {
+    grid-area: grow;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  body .deal-row .store-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  body .deal-row .store-line img { flex: none; width: 14px; height: 14px; object-fit: contain; }
+
+  body .deal-row .row-title {
+    font-size: 15px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  body .deal-row .tagrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  body .deal-row .tag {
+    font-size: 11px;
+    padding: 2px 7px;
+    line-height: 1.5;
+  }
+
+  /* 가격·배송·통계를 한 줄로 */
+  body .deal-row .rail {
+    grid-area: rail;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 2px 8px;
+    text-align: left;
+    padding-top: 8px;
+    border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  }
+  body .deal-row .price { font-size: 18px; }
+  body .deal-row .price-sub { font-size: 12px; }
+  body .deal-row .stats {
+    margin-left: auto;
+    gap: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  body .deal-row .row-actions {
+    grid-area: acts;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 0;
+  }
+  body .deal-row .row-actions .btn {
+    height: 40px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 어드민 수정 버튼이 있으면 아래 한 줄 전체 */
+  body .deal-row .row-actions > :nth-child(3) { grid-column: 1 / -1; }
+
+  /* ---------- 상단 ---------- */
+  body .page-head { flex-direction: column; align-items: flex-start; gap: 4px; }
+  body .page-head h1 { font-size: 24px; }
+}
