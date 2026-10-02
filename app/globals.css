@@ -2362,3 +2362,258 @@ a {
   body .page-head { flex-direction: column; align-items: flex-start; gap: 4px; }
   body .page-head h1 { font-size: 24px; }
 }
+
+/* ==========================================================================
+ * 모바일 정리 v2 (2026-10-02)
+ *
+ * [근본 원인] ≤900px 에서 .shell 이 `grid-template-columns: 1fr` 이었다.
+ *   1fr = minmax(auto, 1fr) 라서 칸의 최소 폭이 "내용물의 최소 폭"이 된다.
+ *   한 줄로 늘어선 필터 칩·긴 제목이 칸 자체를 화면보다 넓게 밀어내서
+ *   카드 넘침 / 필터 가로 스크롤 안 됨 / 페이지 번호 치우침이 한꺼번에 생겼다.
+ *   PC 처럼 minmax(0, 1fr) 로 바꾸면 칸이 화면 폭에 고정된다.
+ *
+ * [모바일 목록] ≤640px 에서는 게시판형 한 줄 목록:
+ *   [썸네일] 쇼핑몰 / 제목 2줄 / 가격 · 조회 · 댓글 · 시간
+ *   제목을 누르면 원문. 큰 버튼 두 개는 숨김(어드민 수정 버튼은 유지).
+ * ========================================================================== */
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .main { min-width: 0; max-width: 100%; }
+
+  /* 상단바: 줄바꿈 대신 한 줄, 넘치면 메뉴만 옆으로 스크롤 */
+  .sidebar { min-width: 0; }
+  .brand-name { white-space: nowrap; }
+  .side-nav {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .side-nav::-webkit-scrollbar { display: none; }
+  .nav-divider { display: none; }
+
+  /* 필터: 한 줄 가로 스크롤 칩, 라벨은 왼쪽 고정 */
+  .toolbar .frow {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    min-width: 0;
+  }
+  .toolbar .frow::-webkit-scrollbar { display: none; }
+  .toolbar .flabel {
+    flex: none;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 58px;
+    padding-right: 6px;
+    background: var(--background);
+  }
+  .toolbar .fchip { flex: none; white-space: nowrap; }
+  .toolbar .frow > span[style] { flex: none; }
+
+  .searchbar input[type="search"] { min-width: 0; font-size: 16px; } /* iOS 확대 방지 */
+
+  .pager { flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  .toolbar .fchip { padding: 6px 11px; font-size: 13px; }
+  .toolbar .fchip.logo {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .toolbar .fchip.logo img { width: 22px; height: 22px; object-fit: contain; }
+
+  /* ---------- 게시판형 목록 ---------- */
+  .deal-list { gap: 8px; }
+
+  .deal-list .deal-row {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb grow"
+      "thumb rail"
+      "acts  acts";
+    gap: 4px 12px;
+    padding: 12px;
+    align-items: start;
+    min-width: 0;
+  }
+
+  .deal-row .thumb { grid-area: thumb; width: 56px; height: 56px; }
+  .deal-row .thumb img { width: 36px; height: 36px; }
+
+  .deal-row .row-grow {
+    grid-area: grow;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .deal-row .store-line {
+    min-width: 0;
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .deal-row .store-line img { flex: none; width: 13px; height: 13px; }
+  .deal-row .row-title {
+    font-size: 14.5px;
+    line-height: 1.38;
+    word-break: keep-all;
+    overflow: hidden;
+  }
+  .deal-row .tagrow { display: none; }
+
+  .deal-row .rail {
+    grid-area: rail;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+    text-align: left;
+  }
+  .deal-row .price { font-size: 15.5px; }
+  .deal-row .price-sub { display: none; }
+  .deal-row .stats {
+    margin-left: auto;
+    gap: 8px;
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+
+  /* 큰 버튼은 숨기고, 어드민 수정 버튼이 있을 때만 줄을 남긴다 */
+  .deal-row .row-actions { grid-area: acts; }
+  .deal-row .row-actions .btn { display: none; }
+  .deal-row .row-actions:not(:has(> :not(.btn))) { display: none; }
+}
+
+/* ==========================================================================
+ * 모바일 햄버거 메뉴 (2026-10-02) — components/sidebar.tsx 의 .side-panel
+ * PC: 패널은 display:contents → 기존 사이드바 그대로. 버튼·배경 숨김.
+ * ≤900px: 상단바엔 로고 + ☰, 메뉴는 오른쪽에서 슬라이드.
+ * ========================================================================== */
+.menu-btn,
+.side-backdrop,
+.side-panel-head {
+  display: none;
+}
+.side-panel {
+  display: contents;
+}
+
+@media (max-width: 900px) {
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+  }
+  .menu-btn:active { background: color-mix(in srgb, var(--foreground) 8%, transparent); }
+
+  .side-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .side-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 61;
+    width: min(300px, 84vw);
+    height: 100dvh;
+    padding: 14px 14px max(18px, env(safe-area-inset-bottom));
+    background: var(--sidebar);
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.12);
+    overflow-y: auto;
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.24s ease, visibility 0s linear 0.24s;
+  }
+  .side-panel.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.24s ease;
+  }
+
+  .side-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 12px;
+  }
+  .side-panel-title { font-size: 15px; font-weight: 700; }
+  .menu-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+  }
+
+  /* 패널 안에서는 상단바용 가로 배치를 되돌려 세로 메뉴로 */
+  .side-panel .side-nav {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: stretch;
+    margin: 0;
+    gap: 2px;
+    overflow: visible;
+  }
+  .side-panel .nav-item {
+    padding: 11px 12px;
+    font-size: 14.5px;
+    gap: 10px;
+  }
+  .side-panel .nav-label { display: inline; }
+  .side-panel .nav-divider { display: block; margin-top: 12px; }
+
+  .side-panel .side-foot {
+    margin-top: auto;
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .side-panel .theme-box {
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 10px 12px;
+  }
+  .side-panel .theme-label { display: inline-flex; }
+}

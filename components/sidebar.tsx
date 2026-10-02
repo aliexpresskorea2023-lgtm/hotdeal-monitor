@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,11 +11,13 @@ import {
   Layers,
   LogIn,
   LogOut,
+  Menu,
   ScrollText,
   Shapes,
   SquarePen,
   TrendingUp,
   Trophy,
+  X,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -27,6 +30,10 @@ import { ThemeToggle } from "./theme-toggle";
  *   - ADMIN_MODE=1이고 미로그인 → "어드민 로그인" 버튼만.
  *   - 로그인(adminUser) → 어드민 메뉴 + 핸들 + 로그아웃.
  * 프로덕션 빌드에서 ADMIN_MODE 미설정 시 어드민 흔적이 남지 않는다.
+ *
+ * 모바일(≤900px, 2026-10-02): 상단바에는 로고 + ☰ 버튼만 남기고
+ * 메뉴·테마 토글은 오른쪽에서 밀려 들어오는 패널(.side-panel)로 연다.
+ * PC에서는 .side-panel 이 display:contents 라 기존 레이아웃 그대로.
  */
 
 const MENU = [
@@ -53,6 +60,27 @@ export function Sidebar({
   adminUser?: string | null;
 }) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  // 페이지를 이동하면 패널을 닫는다.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // 열려 있는 동안 뒤 화면 스크롤 잠금 + Esc 로 닫기.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
     <aside className="sidebar">
@@ -65,80 +93,111 @@ export function Sidebar({
         </span>
       </Link>
 
-      <nav className="side-nav">
-        {MENU.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+      <button
+        type="button"
+        className="menu-btn"
+        aria-label="메뉴 열기"
+        aria-expanded={open}
+        aria-controls="side-panel"
+        onClick={() => setOpen(true)}
+      >
+        <Menu size={22} />
+      </button>
 
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={active ? "nav-item active" : "nav-item"}
-            >
-              <Icon size={17} />
-              <span className="nav-label">{label}</span>
-            </Link>
-          );
-        })}
+      <div
+        className={open ? "side-backdrop open" : "side-backdrop"}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
 
-        {adminMode && !adminUser && (
-          <>
-            <div className="nav-divider">어드민</div>
-            <Link
-              href="/admin/login"
-              className={
-                pathname.startsWith("/admin/login")
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-            >
-              <LogIn size={17} />
-              <span className="nav-label">어드민 로그인</span>
-            </Link>
-          </>
-        )}
+      <div id="side-panel" className={open ? "side-panel open" : "side-panel"}>
+        <div className="side-panel-head">
+          <span className="side-panel-title">메뉴</span>
+          <button
+            type="button"
+            className="menu-close"
+            aria-label="메뉴 닫기"
+            onClick={() => setOpen(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-        {adminMode && adminUser && (
-          <>
-            <div className="nav-divider">어드민</div>
-            {ADMIN_MENU.map(({ href, label, icon: Icon }) => {
-              const active = pathname.startsWith(href);
+        <nav className="side-nav">
+          {MENU.map(({ href, label, icon: Icon }) => {
+            const active =
+              href === "/" ? pathname === "/" : pathname.startsWith(href);
 
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={active ? "nav-item active" : "nav-item"}
-                >
-                  <Icon size={17} />
-                  <span className="nav-label">{label}</span>
-                </Link>
-              );
-            })}
-          </>
-        )}
-      </nav>
-
-      <div className="side-foot">
-        {adminMode && adminUser && (
-          <div className="admin-user">
-            <span className="admin-handle" title={adminUser}>
-              {adminUser}
-            </span>
-            <form action="/api/admin/auth/logout" method="post">
-              <button
-                type="submit"
-                className="admin-logout"
-                title="로그아웃"
-                aria-label="로그아웃"
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={active ? "nav-item active" : "nav-item"}
               >
-                <LogOut size={15} />
-              </button>
-            </form>
-          </div>
-        )}
-        <ThemeToggle />
+                <Icon size={17} />
+                <span className="nav-label">{label}</span>
+              </Link>
+            );
+          })}
+
+          {adminMode && !adminUser && (
+            <>
+              <div className="nav-divider">어드민</div>
+              <Link
+                href="/admin/login"
+                className={
+                  pathname.startsWith("/admin/login")
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+              >
+                <LogIn size={17} />
+                <span className="nav-label">어드민 로그인</span>
+              </Link>
+            </>
+          )}
+
+          {adminMode && adminUser && (
+            <>
+              <div className="nav-divider">어드민</div>
+              {ADMIN_MENU.map(({ href, label, icon: Icon }) => {
+                const active = pathname.startsWith(href);
+
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={active ? "nav-item active" : "nav-item"}
+                  >
+                    <Icon size={17} />
+                    <span className="nav-label">{label}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
+        </nav>
+
+        <div className="side-foot">
+          {adminMode && adminUser && (
+            <div className="admin-user">
+              <span className="admin-handle" title={adminUser}>
+                {adminUser}
+              </span>
+              <form action="/api/admin/auth/logout" method="post">
+                <button
+                  type="submit"
+                  className="admin-logout"
+                  title="로그아웃"
+                  aria-label="로그아웃"
+                >
+                  <LogOut size={15} />
+                </button>
+              </form>
+            </div>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
     </aside>
   );
