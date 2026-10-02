@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicOrigin } from "@/src/lib/public-origin";
 import { adminEnabled } from "@/src/lib/admin-gate";
 import {
   OAUTH_STATE_COOKIE,
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
     return new NextResponse("GitHub OAuth 미설정", { status: 500 });
   }
 
-  const origin = new URL(req.url).origin;
+  const origin = publicOrigin(req);
   const state = randomState();
   const url = authorizeUrl(cfg, origin, state);
 

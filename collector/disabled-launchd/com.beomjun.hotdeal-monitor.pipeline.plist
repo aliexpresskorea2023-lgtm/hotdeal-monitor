@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.beomjun.hotdeal-monitor.pipeline</string>
+
+	<!-- run-pipeline.sh가 collect → ingest 순서로 실행.
+	     주기 수집은 목록 1페이지면 충분 (신규 글은 목록 상단에 등장,
+	     2시간 간격이면 순환 전에 포착). max-details는 넉넉히 두되
+	     DB 스킵(동결/TTL)이 예산을 소모하지 않아 실부하는 미미함. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/beomjun/dev/hotdeal-monitor/collector/run-pipeline.sh</string>
+		<string>--pages</string>
+		<string>1</string>
+		<string>--max-details</string>
+		<string>40</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor</string>
+
+	<!-- 주간만 수집: 08:00~22:00, 2시간 간격 (하루 8회).
+	     새벽(00~07시) 수집은 실측상 실익이 없어 제외했다 —
+	     심야에는 집 회선에서도 일부 사이트가 차단을 걸어
+	     수집량이 0에 수렴하고(2026-08-27 로그: 05시 1건),
+	     2시간 주기 깨움으로 맥 배터리가 밤새 소모됐다.
+	     야간 글은 08시 실행에서 회수된다.
+	     수면 중 스케줄 시각이 지나면 깨어났을 때 밀린 1회만 실행. -->
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
+	</array>
+
+	<key>RunAtLoad</key>
+	<false/>
+
+	<!-- launchd 기본 PATH에는 nvm node가 없음.
+	     node 버전을 바꾸면 이 경로도 함께 수정해야 한다. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/Users/beomjun/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>HOME</key>
+		<string>/Users/beomjun</string>
+	</dict>
+
+	<key>StandardOutPath</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/launchd-stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/beomjun/dev/hotdeal-monitor/data/logs/launchd-stderr.log</string>
+
+	<!-- 백그라운드 저우선 순위 -->
+	<key>Nice</key>
+	<integer>10</integer>
+</dict>
+</plist>

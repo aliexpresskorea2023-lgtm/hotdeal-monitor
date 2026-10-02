@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicOrigin } from "@/src/lib/public-origin";
 import { adminEnabled } from "@/src/lib/admin-gate";
 import {
   exchangeCode,
@@ -44,7 +45,7 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const origin = url.origin;
+  const origin = publicOrigin(req);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const stateCookie = readCookie(req, OAUTH_STATE_COOKIE);

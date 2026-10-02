@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicOrigin } from "@/src/lib/public-origin";
 import { adminEnabled } from "@/src/lib/admin-gate";
 
 /*
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
 
   // 토큰 미설정(로컬) — 인증 불필요, 바로 통과
   if (!token) {
-    return NextResponse.redirect(new URL("/admin", req.url), { status: 302 });
+    return NextResponse.redirect(new URL("/admin", publicOrigin(req)), { status: 302 });
   }
 
   const form = await req.formData();
@@ -23,12 +24,12 @@ export async function POST(req: Request) {
 
   if (submitted !== token) {
     return NextResponse.redirect(
-      new URL("/admin/login?error=1", req.url),
+      new URL("/admin/login?error=1", publicOrigin(req)),
       { status: 302 },
     );
   }
 
-  const res = NextResponse.redirect(new URL("/admin", req.url), {
+  const res = NextResponse.redirect(new URL("/admin", publicOrigin(req)), {
     status: 302,
   });
 

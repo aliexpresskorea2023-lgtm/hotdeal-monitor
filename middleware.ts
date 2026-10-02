@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicOrigin } from "@/src/lib/public-origin";
 import type { NextRequest } from "next/server";
 import { adminAuthConfigured } from "@/src/lib/admin-gate";
 import { ADMIN_SESSION_COOKIE, verifySession } from "@/src/lib/admin-session";
@@ -39,7 +40,7 @@ export async function middleware(request: NextRequest) {
   if (token && tokenCookie === token) return NextResponse.next();
 
   // 미인증 → 로그인으로
-  return NextResponse.redirect(new URL("/admin/login", request.url));
+  return NextResponse.redirect(new URL("/admin/login", publicOrigin(request)));
 }
 
 export const config = {
