@@ -19,6 +19,10 @@
 #   (launchd는 CWD=/ 로 실행함).
 # - mkdir 기반 잠금으로 중복 실행을 막는다. 이전 실행이 아직 살아 있으면
 #   새 실행은 즉시 종료(exit 75, EX_TEMPFAIL).
+#   잠금 폴더에 실행 pid 를 적어 두고, 그 프로세스가 이미 없으면(강제 종료·
+#   시간 초과·전원 차단으로 잠금이 남은 경우) 남은 잠금을 정리하고 진행한다.
+#   (2026-10-05 22시 실행이 잠금을 남겨 10/9까지 수집이 멈춘 일 이후)
+#   macOS 에는 flock 이 없어 pid 확인 방식으로 맥·리눅스 모두 동작하게 했다.
 #
 # 사용법:
 #   collector/run-pipeline.sh [collect.py 옵션 그대로 전달]
@@ -72,10 +76,21 @@ mkdir -p "$LOG_DIR"
 
 # ---- 잠금 -----------------------------------------------
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "$(date '+%F %T') 다른 pipeline 실행이 아직 진행 중 — 종료합니다." >&2
-  exit 75
+  OLD_PID="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "$(date '+%F %T') 다른 pipeline 실행이 아직 진행 중(pid $OLD_PID) — 종료합니다." >&2
+    exit 75
+  fi
+  # 잠금을 만든 실행이 이미 없음 → 남은 잠금 정리 후 진행
+  echo "$(date '+%F %T') 이전 실행(pid ${OLD_PID:-기록 없음})이 남긴 잠금을 정리하고 진행합니다." | tee -a "$LOG_FILE" >&2
+  rm -rf "$LOCK_DIR"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "$(date '+%F %T') 잠금을 다시 만들지 못했어요(동시에 다른 실행이 시작됨) — 종료합니다." >&2
+    exit 75
+  fi
 fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+echo "$$" > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
 
 ts() { date '+%F %T'; }
 log() { echo "$(ts) $*" | tee -a "$LOG_FILE"; }
